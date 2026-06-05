@@ -25,17 +25,18 @@ type Event struct {
 func NewEvent(userID string, t EventType, contact Contact, loc Location,
 	description string, startsAt time.Time, reminder Reminder) (*Event, error) {
 
-	if !t.Valid() {
-		return nil, ErrInvalidEventType
+	if err := validateType(t); err != nil {
+		return nil, err
 	}
-	if !reminder.Valid() {
-		return nil, ErrInvalidReminder
+	if err := validateReminder(reminder); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(description) == "" {
-		return nil, ErrEmptyDescription
+	cleanDesc, err := cleanDescription(description)
+	if err != nil {
+		return nil, err
 	}
-	if !loc.Valid() {
-		return nil, ErrInvalidLocation
+	if err := validateLocation(loc); err != nil {
+		return nil, err
 	}
 
 	return &Event{
@@ -43,11 +44,43 @@ func NewEvent(userID string, t EventType, contact Contact, loc Location,
 		Type:        t,
 		Contact:     contact,
 		Location:    loc,
-		Description: strings.TrimSpace(description),
+		Description: cleanDesc,
 		StartsAt:    startsAt,
 		Status:      StatusPendiente,
 		Reminder:    reminder,
 	}, nil
+}
+
+// Validadores de invariantes reutilizados por NewEvent y Edit (event_patch.go).
+
+func validateType(t EventType) error {
+	if !t.Valid() {
+		return ErrInvalidEventType
+	}
+	return nil
+}
+
+func validateReminder(r Reminder) error {
+	if !r.Valid() {
+		return ErrInvalidReminder
+	}
+	return nil
+}
+
+func validateLocation(l Location) error {
+	if !l.Valid() {
+		return ErrInvalidLocation
+	}
+	return nil
+}
+
+// cleanDescription recorta espacios y rechaza una descripcion vacia.
+func cleanDescription(description string) (string, error) {
+	trimmed := strings.TrimSpace(description)
+	if trimmed == "" {
+		return "", ErrEmptyDescription
+	}
+	return trimmed, nil
 }
 
 // ChangeStatus actualiza el estatus validando el nuevo valor.
