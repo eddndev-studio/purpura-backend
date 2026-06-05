@@ -1,0 +1,22 @@
+[Unit]
+Description=Purpura backend API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=purpura
+Group=purpura
+EnvironmentFile=/etc/purpura/purpura-backend.env
+ExecStart=/opt/purpura/purpura-api
+Restart=on-failure
+RestartSec=5
+# Endurecimiento basico.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/purpura
+
+[Install]
+WantedBy=multi-user.target
