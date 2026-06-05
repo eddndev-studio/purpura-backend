@@ -1,0 +1,30 @@
+# Binaries
+/bin/
+/tmp/
+*.exe
+*.out
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Go
+/vendor/
+go.work
+go.work.sum
+
+# Coverage
+*.coverprofile
+coverage.out
+coverage.html
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
