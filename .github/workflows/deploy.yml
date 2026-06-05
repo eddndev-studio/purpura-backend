@@ -1,15 +1,14 @@
 name: deploy
 
-# Despliegue a vps2 (ssh). Se dispara al publicar un tag vX.Y.Z o manualmente.
-# Requiere los siguientes secrets del repo/entorno (no se commitean):
-#   VPS2_HOST     host o IP de vps2
-#   VPS2_USER     usuario ssh con permiso de despliegue
-#   VPS2_SSH_KEY  clave privada ssh (ed25519) del usuario de despliegue
-# En el servidor se asume:
-#   - /etc/purpura/purpura-backend.env  (variables del servicio, incl. DATABASE_URL)
-#   - el binario 'migrate' (golang-migrate) instalado para aplicar migraciones
-#   - una unidad systemd 'purpura-backend' (deploy/purpura-backend.service)
-
+# Despliegue a vps2 mediante el runner self-hosted de la org (label 'vps2'): el job corre EN la
+# maquina, sin SSH ni secrets. Se dispara al publicar un tag vX.Y.Z o manualmente.
+#
+# El servidor ya esta aprovisionado (mismo patron que syle-api):
+#   - usuario 'purpura', /opt/purpura/{bin,migrations}, /etc/purpura/purpura-backend.env (PORT=8091)
+#   - postgres role+db 'purpura'; golang-migrate en /usr/local/bin
+#   - unidad systemd 'purpura-backend'; vhost nginx api.purpura.eddn.dev -> 127.0.0.1:8091 + cert
+#   - sudoers estrecho /etc/sudoers.d/purpura-deploy para github-runner:
+#       systemctl restart/is-active purpura-backend, reload nginx, y /opt/purpura/bin/purpura-migrate
 on:
   push:
     tags: ['v*']
@@ -24,7 +23,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps2]
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -39,40 +38,21 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go build -trimpath -ldflags="-s -w" -o dist/purpura-api ./cmd/api
 
-      - name: setup ssh
+      - name: install binary + migrations
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS2_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.VPS2_HOST }}" >> ~/.ssh/known_hosts
+          install -m 0755 dist/purpura-api /opt/purpura/bin/purpura-api
+          rsync -a --delete db/migrations/ /opt/purpura/migrations/
 
-      - name: upload artifacts
+      - name: migrate + restart
         run: |
-          rsync -az --delete \
-            dist/purpura-api \
-            db/migrations \
-            deploy/purpura-backend.service \
-            "${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}:/opt/purpura/staging/"
-
-      - name: migrate and restart
-        run: |
-          ssh "${{ secrets.VPS2_USER }}@${{ secrets.VPS2_HOST }}" bash -se <<'REMOTE'
-          set -euo pipefail
-          source /etc/purpura/purpura-backend.env
-          # Aplicar migraciones (idempotente).
-          migrate -path /opt/purpura/staging/migrations -database "$DATABASE_URL" up
-          # Instalar binario y unidad, reiniciar servicio.
-          sudo install -m 0755 /opt/purpura/staging/purpura-api /opt/purpura/purpura-api
-          sudo install -m 0644 /opt/purpura/staging/purpura-backend.service /etc/systemd/system/purpura-backend.service
-          sudo systemctl daemon-reload
+          sudo /opt/purpura/bin/purpura-migrate
           sudo systemctl restart purpura-backend
           sudo systemctl is-active purpura-backend
-          REMOTE
 
       - name: smoke check
         run: |
           for i in $(seq 1 15); do
-            if curl -fsS "https://${{ secrets.VPS2_HOST }}/health" >/dev/null 2>&1; then
+            if curl -fsS https://api.purpura.eddn.dev/health >/dev/null 2>&1; then
               echo "health ok"; exit 0
             fi
             sleep 2

@@ -8,7 +8,7 @@ Type=simple
 User=purpura
 Group=purpura
 EnvironmentFile=/etc/purpura/purpura-backend.env
-ExecStart=/opt/purpura/purpura-api
+ExecStart=/opt/purpura/bin/purpura-api
 Restart=on-failure
 RestartSec=5
 # Endurecimiento basico.
