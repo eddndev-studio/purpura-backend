@@ -1,6 +1,8 @@
 package httpadapter
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -120,10 +122,22 @@ func (d Deps) handleImportEvents(w http.ResponseWriter, r *http.Request) {
 		writeDecodeError(w, r, err)
 		return
 	}
-	// Modo atomic con items invalidos -> ErrValidation (422); partial -> 200 con
-	// el resumen (incluye los fallos por item).
+	if req.Events == nil {
+		writeProblem(w, r, http.StatusBadRequest, "bad_request", "el campo events es obligatorio")
+		return
+	}
+	// Modo atomic con items invalidos -> ErrValidation (422) con el arreglo de
+	// errores por item; partial -> 200 con el resumen (incluye los fallos).
 	sum, err := d.Events.ImportEvents(r.Context(), userIDFrom(r), req.toInput())
 	if err != nil {
+		if errors.Is(err, app.ErrValidation) && len(sum.Errors) > 0 {
+			fields := make([]problemFieldError, len(sum.Errors))
+			for i, ie := range sum.Errors {
+				fields[i] = problemFieldError{Field: fmt.Sprintf("events[%d]", ie.Index), Message: ie.Detail}
+			}
+			writeProblemWithFields(w, r, http.StatusUnprocessableEntity, "validation_failed", err.Error(), fields)
+			return
+		}
 		writeError(w, r, err)
 		return
 	}

@@ -109,7 +109,7 @@ func TestUpdateEvent_EmptyPatchIsValidationError(t *testing.T) {
 func TestUpdateEvent_RevalidatesLocation(t *testing.T) {
 	svc, _, _ := newEventSvc()
 	created, _ := svc.CreateEvent(context.Background(), "user-1", validCreate())
-	bad := UpdateEventInput{Patch: domain.EventPatch{Location: ptr(domain.Location{Lat: 200, Lng: 0})}}
+	bad := UpdateEventInput{Patch: domain.EventPatch{LocationLat: ptr(200.0), LocationLng: ptr(0.0)}}
 	_, err := svc.UpdateEvent(context.Background(), "user-1", created.ID, bad)
 	if !errors.Is(err, domain.ErrInvalidLocation) {
 		t.Fatalf("quiero ErrInvalidLocation, obtuve %v", err)

@@ -52,6 +52,18 @@ func TestRegister_ShortPassword(t *testing.T) {
 	}
 }
 
+func TestRegister_TooLongPasswordIsValidation(t *testing.T) {
+	svc, _ := newAuthSvc()
+	long := make([]byte, maxPasswordLen+1)
+	for i := range long {
+		long[i] = 'a'
+	}
+	_, err := svc.Register(context.Background(), RegisterInput{Email: "a@x.com", Nombre: "A", Password: string(long)})
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("password > %d bytes -> ErrValidation (no 500 de bcrypt), obtuve %v", maxPasswordLen, err)
+	}
+}
+
 func TestRegister_InvalidEmailIsValidationCode(t *testing.T) {
 	svc, _ := newAuthSvc()
 	_, err := svc.Register(context.Background(), RegisterInput{Email: "no-es-correo", Nombre: "A", Password: "S3guroPurpura!"})

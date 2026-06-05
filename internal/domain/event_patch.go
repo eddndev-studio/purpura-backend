@@ -2,29 +2,38 @@ package domain
 
 import "time"
 
-// EventPatch describe una edicion parcial de un Event. Un campo nil significa
-// "no tocar". Para limpiar contact_ref o location_label se envia el Contact o
-// Location completo con esa cadena vacia (semantica PATCH; ver 04 seccion 5.8).
-// El estatus NO se edita aqui: tiene su propio mutador ChangeStatus.
+// EventPatch describe una edicion parcial de un Event. Cada campo es un puntero:
+// nil significa "no tocar"; presente significa "aplicar este valor". Los campos
+// de contacto y ubicacion son INDEPENDIENTES (granularidad de campo, no de value
+// object), de modo que un PATCH que solo trae contactName conserva el contactRef
+// existente (04 seccion 5.8: "los ausentes se conservan"). Enviar "" en
+// contactRef/locationLabel los limpia. El estatus NO se edita aqui: tiene su
+// propio mutador ChangeStatus.
 type EventPatch struct {
-	Type        *EventType
-	Contact     *Contact
-	Location    *Location
-	Description *string
-	StartsAt    *time.Time
-	Reminder    *Reminder
+	Type          *EventType
+	ContactName   *string
+	ContactRef    *string
+	LocationLat   *float64
+	LocationLng   *float64
+	LocationLabel *string
+	Description   *string
+	StartsAt      *time.Time
+	Reminder      *Reminder
 }
 
 // IsEmpty indica que el patch no trae ningun campo (cuerpo PATCH vacio).
 func (p EventPatch) IsEmpty() bool {
-	return p.Type == nil && p.Contact == nil && p.Location == nil &&
+	return p.Type == nil && p.ContactName == nil && p.ContactRef == nil &&
+		p.LocationLat == nil && p.LocationLng == nil && p.LocationLabel == nil &&
 		p.Description == nil && p.StartsAt == nil && p.Reminder == nil
 }
 
 // Edit aplica los campos presentes del patch revalidando las invariantes
 // afectadas (tipo, recordatorio, descripcion no vacia, ubicacion en rango),
 // reutilizando los mismos validadores que NewEvent. Valida TODO antes de mutar:
-// si alguna invariante falla, el evento no se modifica.
+// si alguna invariante falla, el evento no se modifica. Los campos de ubicacion
+// se fusionan sobre la ubicacion actual, de modo que tocar solo uno conserva los
+// demas (y la validacion de rango corre sobre el resultado fusionado).
 func (e *Event) Edit(patch EventPatch) error {
 	if patch.Type != nil {
 		if err := validateType(*patch.Type); err != nil {
@@ -44,8 +53,21 @@ func (e *Event) Edit(patch EventPatch) error {
 		}
 		cleanDesc = d
 	}
-	if patch.Location != nil {
-		if err := validateLocation(*patch.Location); err != nil {
+
+	// Ubicacion candidata: la actual con los campos presentes aplicados.
+	loc := e.Location
+	if patch.LocationLat != nil {
+		loc.Lat = *patch.LocationLat
+	}
+	if patch.LocationLng != nil {
+		loc.Lng = *patch.LocationLng
+	}
+	if patch.LocationLabel != nil {
+		loc.Label = *patch.LocationLabel
+	}
+	// Solo revalida el rango si cambiaron las coordenadas.
+	if patch.LocationLat != nil || patch.LocationLng != nil {
+		if err := validateLocation(loc); err != nil {
 			return err
 		}
 	}
@@ -60,14 +82,15 @@ func (e *Event) Edit(patch EventPatch) error {
 	if patch.Description != nil {
 		e.Description = cleanDesc
 	}
-	if patch.Location != nil {
-		e.Location = *patch.Location
-	}
-	if patch.Contact != nil {
-		e.Contact = *patch.Contact
-	}
 	if patch.StartsAt != nil {
 		e.StartsAt = *patch.StartsAt
 	}
+	if patch.ContactName != nil {
+		e.Contact.Name = *patch.ContactName
+	}
+	if patch.ContactRef != nil {
+		e.Contact.Ref = *patch.ContactRef
+	}
+	e.Location = loc
 	return nil
 }

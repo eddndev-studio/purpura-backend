@@ -2,6 +2,7 @@ package httpadapter
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/eddndev-studio/purpura-backend/internal/app"
@@ -14,12 +15,20 @@ const (
 
 // problemDoc es el cuerpo problem+json (RFC 7807; 04 seccion 4).
 type problemDoc struct {
-	Type     string `json:"type"`
-	Title    string `json:"title"`
-	Status   int    `json:"status"`
-	Detail   string `json:"detail"`
-	Instance string `json:"instance"`
-	Code     string `json:"code"`
+	Type     string              `json:"type"`
+	Title    string              `json:"title"`
+	Status   int                 `json:"status"`
+	Detail   string              `json:"detail"`
+	Instance string              `json:"instance"`
+	Code     string              `json:"code"`
+	Errors   []problemFieldError `json:"errors,omitempty"`
+}
+
+// problemFieldError es un error de validacion por campo (04 seccion 4: arreglo
+// opcional `errors` en 400/422).
+type problemFieldError struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
 }
 
 // problemTitles son etiquetas estables por codigo. Se mantienen en ASCII
@@ -67,14 +76,28 @@ func statusForCode(code string) int {
 }
 
 // writeError traduce un error de dominio/app a problem+json usando app.ErrorCode
-// como fuente unica de codigos. El status se deriva del codigo.
+// como fuente unica de codigos. El status se deriva del codigo. Para un 500 NO
+// se filtra el mensaje interno (driver/SQL/libreria) al cliente: se registra
+// server-side y se devuelve un detalle generico.
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	code := app.ErrorCode(err)
-	writeProblem(w, r, statusForCode(code), code, err.Error())
+	status := statusForCode(code)
+	detail := err.Error()
+	if status == http.StatusInternalServerError {
+		slog.Error("error interno no controlado", "err", err.Error(), "path", r.URL.Path)
+		detail = "error interno del servidor"
+	}
+	writeProblem(w, r, status, code, detail)
 }
 
 // writeProblem escribe el documento problem+json con el status y codigo dados.
 func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
+	writeProblemWithFields(w, r, status, code, detail, nil)
+}
+
+// writeProblemWithFields escribe problem+json incluyendo el arreglo `errors` por
+// campo (p.ej. import atomico fallido; 04 seccion 5.12).
+func writeProblemWithFields(w http.ResponseWriter, r *http.Request, status int, code, detail string, fields []problemFieldError) {
 	title, ok := problemTitles[code]
 	if !ok {
 		title = problemTitles["internal_error"]
@@ -88,5 +111,6 @@ func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, deta
 		Detail:   detail,
 		Instance: r.URL.Path,
 		Code:     code,
+		Errors:   fields,
 	})
 }

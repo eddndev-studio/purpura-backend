@@ -10,8 +10,14 @@ import (
 	"github.com/eddndev-studio/purpura-backend/internal/ports"
 )
 
-// minPasswordLen es la politica de longitud minima de contrasena (04 seccion 5.2).
-const minPasswordLen = 8
+// Politica de longitud de contrasena. El minimo es del contrato (04 seccion
+// 5.2). El maximo es el limite duro de bcrypt (72 bytes): sin esta guarda, una
+// contrasena mas larga haria que Hash devolviera un error de infraestructura que
+// el cliente veria como 500; con ella se rechaza como 422 validation_failed.
+const (
+	minPasswordLen = 8
+	maxPasswordLen = 72
+)
 
 // AuthService orquesta el registro, login y Google Sign-In. Emite el JWT propio.
 type AuthService struct {
@@ -34,6 +40,9 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput) (AuthResul
 	}
 	if len(in.Password) < minPasswordLen {
 		return AuthResult{}, fmt.Errorf("%w: la contrasena debe tener al menos %d caracteres", ErrValidation, minPasswordLen)
+	}
+	if len(in.Password) > maxPasswordLen {
+		return AuthResult{}, fmt.Errorf("%w: la contrasena no puede exceder %d bytes", ErrValidation, maxPasswordLen)
 	}
 	u.ID = s.IDs.NewID()
 	u.CreatedAt = s.Clock.Now()

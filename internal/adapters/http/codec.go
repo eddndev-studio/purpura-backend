@@ -174,10 +174,9 @@ func (r createEventRequest) toInput() app.CreateEventInput {
 }
 
 // updateEventRequest usa punteros para distinguir "campo ausente" (nil) de
-// "campo presente con valor vacio" (semantica PATCH; 04 seccion 5.8). Contact y
-// Location son grupos atomicos: si llega cualquiera de sus campos, se construye
-// el value object completo (los ausentes quedan en su cero), por lo que al
-// actualizar la ubicacion deben enviarse lat y lng juntos (04 5.8).
+// "campo presente con valor vacio" (semantica PATCH; 04 seccion 5.8). Cada
+// subcampo de contacto y ubicacion es independiente: enviar solo uno conserva
+// los hermanos no enviados (la fusion ocurre en domain.Event.Edit).
 type updateEventRequest struct {
 	EventType     *string    `json:"eventType"`
 	ContactName   *string    `json:"contactName"`
@@ -191,7 +190,15 @@ type updateEventRequest struct {
 }
 
 func (r updateEventRequest) toPatch() domain.EventPatch {
-	var p domain.EventPatch
+	p := domain.EventPatch{
+		Description:   r.Description,
+		StartsAt:      r.StartsAt,
+		ContactName:   r.ContactName,
+		ContactRef:    r.ContactRef,
+		LocationLat:   r.LocationLat,
+		LocationLng:   r.LocationLng,
+		LocationLabel: r.LocationLabel,
+	}
 	if r.EventType != nil {
 		t := domain.EventType(*r.EventType)
 		p.Type = &t
@@ -199,22 +206,6 @@ func (r updateEventRequest) toPatch() domain.EventPatch {
 	if r.ReminderType != nil {
 		rem := domain.Reminder(*r.ReminderType)
 		p.Reminder = &rem
-	}
-	if r.Description != nil {
-		p.Description = r.Description
-	}
-	if r.StartsAt != nil {
-		p.StartsAt = r.StartsAt
-	}
-	if r.ContactName != nil || r.ContactRef != nil {
-		p.Contact = &domain.Contact{Name: derefStr(r.ContactName), Ref: derefStr(r.ContactRef)}
-	}
-	if r.LocationLat != nil || r.LocationLng != nil || r.LocationLabel != nil {
-		p.Location = &domain.Location{
-			Lat:   derefFloat(r.LocationLat),
-			Lng:   derefFloat(r.LocationLng),
-			Label: derefStr(r.LocationLabel),
-		}
 	}
 	return p
 }
@@ -313,18 +304,4 @@ func writeDecodeError(w http.ResponseWriter, r *http.Request, err error) {
 	default:
 		writeError(w, r, err)
 	}
-}
-
-func derefStr(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return *p
-}
-
-func derefFloat(p *float64) float64 {
-	if p == nil {
-		return 0
-	}
-	return *p
 }

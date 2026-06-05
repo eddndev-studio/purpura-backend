@@ -71,7 +71,7 @@ func TestEditRejectsInvalidAndDoesNotMutate(t *testing.T) {
 		{"tipo invalido", EventPatch{Type: ptr(EventType("fiesta"))}, ErrInvalidEventType},
 		{"recordatorio invalido", EventPatch{Reminder: ptr(Reminder("nunca"))}, ErrInvalidReminder},
 		{"descripcion vacia", EventPatch{Description: ptr("   ")}, ErrEmptyDescription},
-		{"ubicacion invalida", EventPatch{Location: ptr(Location{Lat: 200, Lng: 0})}, ErrInvalidLocation},
+		{"latitud fuera de rango", EventPatch{LocationLat: ptr(200.0)}, ErrInvalidLocation},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -90,24 +90,49 @@ func TestEditRejectsInvalidAndDoesNotMutate(t *testing.T) {
 func TestEditUpdatesContactAndLocationAndStartsAt(t *testing.T) {
 	ev := newValidEvent(t)
 	newStart := time.Date(2027, 1, 2, 9, 30, 0, 0, time.UTC)
-	newLoc := Location{Lat: 40.4168, Lng: -3.7038, Label: "Madrid"}
-	newContact := Contact{Name: "Ana", Ref: ""}
 
 	err := ev.Edit(EventPatch{
-		Contact:  &newContact,
-		Location: &newLoc,
-		StartsAt: &newStart,
+		ContactName:   ptr("Ana"),
+		ContactRef:    ptr(""),
+		LocationLat:   ptr(40.4168),
+		LocationLng:   ptr(-3.7038),
+		LocationLabel: ptr("Madrid"),
+		StartsAt:      &newStart,
 	})
 	if err != nil {
 		t.Fatalf("no se esperaba error: %v", err)
 	}
-	if ev.Contact != newContact {
-		t.Errorf("contact = %+v, se esperaba %+v", ev.Contact, newContact)
+	if ev.Contact != (Contact{Name: "Ana", Ref: ""}) {
+		t.Errorf("contact = %+v", ev.Contact)
 	}
-	if ev.Location != newLoc {
-		t.Errorf("location = %+v, se esperaba %+v", ev.Location, newLoc)
+	if ev.Location != (Location{Lat: 40.4168, Lng: -3.7038, Label: "Madrid"}) {
+		t.Errorf("location = %+v", ev.Location)
 	}
 	if !ev.StartsAt.Equal(newStart) {
 		t.Errorf("starts_at = %v, se esperaba %v", ev.StartsAt, newStart)
+	}
+}
+
+// Regresion (hallazgo de revision): un PATCH parcial de un solo subcampo de
+// contacto o ubicacion debe CONSERVAR los hermanos no enviados (04 seccion 5.8).
+func TestEditPartialPreservesSiblingFields(t *testing.T) {
+	ev := newValidEvent(t)
+	ev.Contact = Contact{Name: "Original", Ref: "ref-original"}
+	ev.Location = Location{Lat: 19.43, Lng: -99.13, Label: "CDMX"}
+
+	// Solo cambia contactName: contactRef debe permanecer.
+	if err := ev.Edit(EventPatch{ContactName: ptr("Nuevo")}); err != nil {
+		t.Fatalf("error inesperado: %v", err)
+	}
+	if ev.Contact.Name != "Nuevo" || ev.Contact.Ref != "ref-original" {
+		t.Errorf("contact = %+v, se esperaba conservar Ref", ev.Contact)
+	}
+
+	// Solo cambia locationLabel: lat/lng deben permanecer.
+	if err := ev.Edit(EventPatch{LocationLabel: ptr("Centro")}); err != nil {
+		t.Fatalf("error inesperado: %v", err)
+	}
+	if ev.Location.Lat != 19.43 || ev.Location.Lng != -99.13 || ev.Location.Label != "Centro" {
+		t.Errorf("location = %+v, se esperaba conservar lat/lng", ev.Location)
 	}
 }
