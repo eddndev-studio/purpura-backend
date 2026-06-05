@@ -1,0 +1,20 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        overrides:
+          # uuid de Postgres -> string en Go, para coincidir con el dominio
+          # (Event.ID, Event.UserID, User.ID son string).
+          - db_type: "uuid"
+            go_type: "string"
+          # timestamptz -> time.Time (StartsAt, CreatedAt, UpdatedAt).
+          - db_type: "timestamptz"
+            go_type: "time.Time"
