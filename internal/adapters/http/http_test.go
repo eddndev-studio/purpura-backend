@@ -3,6 +3,7 @@ package httpadapter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -242,11 +243,12 @@ func TestUpdate_PatchDistinguishesAbsentFromEmpty(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	// contactRef:"" presente => Contact no nil con Ref vacio; otros campos nil.
-	if ev.gotPatch.Contact == nil || ev.gotPatch.Contact.Ref != "" {
-		t.Errorf("patch contact = %+v, quiero presente con Ref vacio", ev.gotPatch.Contact)
+	// contactRef:"" presente => ContactRef no nil con valor vacio; el hermano
+	// ContactName y los demas campos ausentes quedan nil (se conservan).
+	if ev.gotPatch.ContactRef == nil || *ev.gotPatch.ContactRef != "" {
+		t.Errorf("patch contactRef = %v, quiero presente y vacio", ev.gotPatch.ContactRef)
 	}
-	if ev.gotPatch.Description != nil || ev.gotPatch.Type != nil {
+	if ev.gotPatch.ContactName != nil || ev.gotPatch.Description != nil || ev.gotPatch.Type != nil {
 		t.Errorf("campos ausentes deben ser nil: %+v", ev.gotPatch)
 	}
 }
@@ -361,6 +363,54 @@ func TestImport_PayloadTooLarge_413(t *testing.T) {
 	rec := do(h, http.MethodPost, "/api/v1/events/import", big, true)
 	if rec.Code != http.StatusRequestEntityTooLarge || decodeBody(t, rec)["code"] != "payload_too_large" {
 		t.Fatalf("status/code = %d/%v", rec.Code, decodeBody(t, rec)["code"])
+	}
+}
+
+func TestInternalError_DoesNotLeakDetail(t *testing.T) {
+	leaky := errors.New("postgres: query events: pq: relation \"secreto\" no existe")
+	h := newServer(Deps{Events: &fakeEvents{evErr: leaky}, Auth: &fakeAuth{}})
+	body := `{"eventType":"junta","locationLat":0,"locationLng":0,"description":"x","startsAt":"2026-06-10T15:30:00Z","reminderType":"none"}`
+	rec := do(h, http.MethodPost, "/api/v1/events", body, true)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, quiero 500", rec.Code)
+	}
+	m := decodeBody(t, rec)
+	if m["code"] != "internal_error" {
+		t.Errorf("code = %v", m["code"])
+	}
+	if d, _ := m["detail"].(string); strings.Contains(d, "secreto") || strings.Contains(d, "postgres") {
+		t.Errorf("el detalle 500 NO debe filtrar internals: %q", d)
+	}
+}
+
+func TestImport_AtomicFailureReturns422WithErrors(t *testing.T) {
+	sum := app.ImportSummary{Errors: []app.ImportItemError{
+		{Index: 3, Code: "invalid_location", Detail: "ubicacion invalida"},
+	}}
+	h := newServer(Deps{Events: &fakeEvents{imp: sum, impErr: app.ErrValidation}, Auth: &fakeAuth{}})
+	rec := do(h, http.MethodPost, "/api/v1/events/import", `{"mode":"atomic","events":[{"eventType":"junta"}]}`, true)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, quiero 422", rec.Code)
+	}
+	m := decodeBody(t, rec)
+	if m["code"] != "validation_failed" {
+		t.Errorf("code = %v", m["code"])
+	}
+	errs, ok := m["errors"].([]any)
+	if !ok || len(errs) != 1 {
+		t.Fatalf("errors[] ausente o mal: %v", m["errors"])
+	}
+	first := errs[0].(map[string]any)
+	if first["field"] != "events[3]" {
+		t.Errorf("field = %v, quiero events[3]", first["field"])
+	}
+}
+
+func TestImport_EventsAbsent_400(t *testing.T) {
+	h := newServer(Deps{Events: &fakeEvents{}, Auth: &fakeAuth{}})
+	rec := do(h, http.MethodPost, "/api/v1/events/import", `{"mode":"partial"}`, true)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, quiero 400 (events ausente)", rec.Code)
 	}
 }
 
