@@ -101,6 +101,9 @@ func (s *EventService) DeleteEvent(ctx context.Context, userID, id string) error
 // QueryEvents resuelve la ventana temporal (query_window), valida paginacion y
 // orden, construye el criterio ports.EventQuery y devuelve la pagina + metadatos.
 func (s *EventService) QueryEvents(ctx context.Context, userID string, in QueryEventsInput) (QueryEventsResult, error) {
+	if err := validateFilters(in.Type, in.Status); err != nil {
+		return QueryEventsResult{}, err
+	}
 	page, pageSize, err := normalizePagination(in.Page, in.PageSize)
 	if err != nil {
 		return QueryEventsResult{}, err
@@ -144,6 +147,9 @@ func (s *EventService) QueryEvents(ctx context.Context, userID string, in QueryE
 // todos los eventos del usuario que cumplen el filtro (Limit=0 => sin limite),
 // ordenados por startsAt asc. Sirve como documento de respaldo (04 seccion 5.11).
 func (s *EventService) ExportEvents(ctx context.Context, userID string, in QueryEventsInput) (ExportResult, error) {
+	if err := validateFilters(in.Type, in.Status); err != nil {
+		return ExportResult{}, err
+	}
 	w, err := resolveWindow(in)
 	if err != nil {
 		return ExportResult{}, err
@@ -171,6 +177,21 @@ func (s *EventService) ExportEvents(ctx context.Context, userID string, in Query
 		Count:         len(events),
 		Events:        events,
 	}, nil
+}
+
+// validateFilters rechaza valores de filtro type/status fuera del enum. El path
+// de LECTURA no invoca ningun constructor/mutador de dominio (a diferencia de
+// crear/editar), por lo que necesita su propia guarda: sin ella, un ?type=basura
+// produciria un WHERE imposible y un 200 vacio en vez del 422 que exige el
+// contrato (04 seccion 4.1/5.7.1). nil = filtro ausente, se omite.
+func validateFilters(typ *domain.EventType, status *domain.EventStatus) error {
+	if typ != nil && !typ.Valid() {
+		return domain.ErrInvalidEventType
+	}
+	if status != nil && !status.Valid() {
+		return domain.ErrInvalidStatus
+	}
+	return nil
 }
 
 // normalizePagination acota page/pageSize: 0 => default; negativo -> ErrValidation;

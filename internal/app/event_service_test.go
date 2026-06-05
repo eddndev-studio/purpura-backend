@@ -228,6 +228,22 @@ func TestQueryEvents_InvalidSortAndPage(t *testing.T) {
 	}
 }
 
+func TestQueryEvents_InvalidFilterEnum(t *testing.T) {
+	svc, _, _ := newEventSvc()
+	badType := ptr(domain.EventType("basura"))
+	if _, err := svc.QueryEvents(context.Background(), "user-1", QueryEventsInput{Type: badType}); !errors.Is(err, domain.ErrInvalidEventType) {
+		t.Errorf("type fuera del enum -> ErrInvalidEventType, obtuve %v", err)
+	}
+	badStatus := ptr(domain.EventStatus("basura"))
+	if _, err := svc.QueryEvents(context.Background(), "user-1", QueryEventsInput{Status: badStatus}); !errors.Is(err, domain.ErrInvalidStatus) {
+		t.Errorf("status fuera del enum -> ErrInvalidStatus, obtuve %v", err)
+	}
+	// El mismo filtro invalido debe rechazarse tambien en export.
+	if _, err := svc.ExportEvents(context.Background(), "user-1", QueryEventsInput{Type: badType}); !errors.Is(err, domain.ErrInvalidEventType) {
+		t.Errorf("export type invalido -> ErrInvalidEventType, obtuve %v", err)
+	}
+}
+
 func TestExportEvents_AllNoPaging(t *testing.T) {
 	svc, _, _ := newEventSvc()
 	for i := 0; i < 5; i++ {
