@@ -31,9 +31,13 @@ type window struct {
 // Las fronteras se construyen con time.Date dejando que Go normalice el
 // desbordamiento (mes 13 -> enero del ano siguiente; dia 32 -> mes siguiente),
 // lo que da el "dia/mes/ano siguiente" sin aritmetica de calendario a mano. En
-// dias de cambio de horario (DST) la medianoche civil sigue siendo univoca (las
-// transiciones ocurren de madrugada), por lo que la ventana abarca el lapso UTC
-// real del dia local (23h o 25h) de forma correcta.
+// las zonas que el contrato contempla (UTC y zonas America/Europe cuyas
+// transiciones DST ocurren de madrugada, no a medianoche) la medianoche civil es
+// univoca, por lo que la ventana abarca el lapso UTC real del dia local (23h o
+// 25h en el dia de cambio) de forma correcta. Salvedad: en las pocas zonas IANA
+// cuya transicion cae exactamente a medianoche local (p.ej. America/Santiago),
+// time.Date normaliza la medianoche inexistente/ambigua desplazandola ~1h y la
+// frontera se corre esa hora; esas zonas quedan fuera del alcance de 04 5.7.2.
 func resolveWindow(in QueryEventsInput) (window, error) {
 	loc, err := loadTZ(in.TZ)
 	if err != nil {
