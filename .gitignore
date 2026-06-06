@@ -28,3 +28,6 @@ coverage.html
 
 # OS
 .DS_Store
+
+# CodeGraph local index
+.codegraph/
