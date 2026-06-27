@@ -294,6 +294,39 @@ func TestIntegration_DeleteAccountCascades(t *testing.T) {
 	}
 }
 
+func TestIntegration_DeleteAccountGoogleNoCredential(t *testing.T) {
+	pool := mustPool(t)
+	ctx := context.Background()
+	users := NewUserRepository(pool)
+	events := NewEventRepository(pool)
+
+	// Cuenta Google: NO tiene fila en user_credentials (solo las password la tienen). El borrado
+	// debe funcionar igual y cascadear sus eventos, aunque no haya credencial que cascadear.
+	u, err := domain.NewUser("google@example.com", "Goo", domain.AuthGoogle)
+	if err != nil {
+		t.Fatalf("NewUser: %v", err)
+	}
+	u.ID = uuid.NewString()
+	u.CreatedAt = time.Now().UTC()
+	if err := users.Create(ctx, u); err != nil {
+		t.Fatalf("create google user: %v", err)
+	}
+	e := newSeedEvent(t, u.ID, time.Now().UTC(), domain.TypeOtros)
+	if err := events.Create(ctx, e); err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	if err := users.DeleteAccount(ctx, u.ID); err != nil {
+		t.Fatalf("DeleteAccount (google): %v", err)
+	}
+	if _, err := users.FindByID(ctx, u.ID); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Errorf("usuario google debio borrarse: %v", err)
+	}
+	if _, err := events.FindByID(ctx, u.ID, e.ID); !errors.Is(err, domain.ErrEventNotFound) {
+		t.Errorf("cascade: el evento debio borrarse con el usuario google: %v", err)
+	}
+}
+
 func days(es []domain.Event) []int {
 	out := make([]int, len(es))
 	for i, e := range es {
