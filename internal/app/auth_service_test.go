@@ -174,3 +174,33 @@ func TestGoogle_InvalidIdTokenIsUnauthorized(t *testing.T) {
 		t.Fatalf("idToken invalido -> ErrUnauthorized, obtuve %v", err)
 	}
 }
+
+func TestDeleteAccount_RemovesUserAndCredential(t *testing.T) {
+	svc, repo := newAuthSvc()
+	res, err := svc.Register(context.Background(), RegisterInput{
+		Email: "ana@example.com", Nombre: "Ana", Password: "S3guroPurpura!",
+	})
+	if err != nil {
+		t.Fatalf("registro previo fallo: %v", err)
+	}
+	id := res.User.ID
+
+	if err := svc.DeleteAccount(context.Background(), id); err != nil {
+		t.Fatalf("DeleteAccount error inesperado: %v", err)
+	}
+	// La cuenta desaparece...
+	if _, err := repo.FindByID(context.Background(), id); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Errorf("usuario deberia estar borrado, err=%v", err)
+	}
+	// ...y su credencial cae con ella (cascada).
+	if _, err := repo.GetPasswordHash(context.Background(), id); !errors.Is(err, domain.ErrInvalidCredential) {
+		t.Errorf("credencial deberia caer en cascada, err=%v", err)
+	}
+}
+
+func TestDeleteAccount_UnknownUser_NotFound(t *testing.T) {
+	svc, _ := newAuthSvc()
+	if err := svc.DeleteAccount(context.Background(), "fantasma"); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Fatalf("cuenta inexistente -> ErrUserNotFound, obtuve %v", err)
+	}
+}

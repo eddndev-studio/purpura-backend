@@ -106,6 +106,19 @@ func (r *UserRepository) GetPasswordHash(ctx context.Context, userID string) (st
 	return hash, nil
 }
 
+// DeleteAccount elimina al usuario por id; el resto de sus datos cae por
+// ON DELETE CASCADE (events, user_credentials). 0 filas -> ErrUserNotFound.
+func (r *UserRepository) DeleteAccount(ctx context.Context, id string) error {
+	n, err := r.q.DeleteUser(ctx, id)
+	if err != nil {
+		return fmt.Errorf("postgres: delete user: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
 // isUniqueViolation indica si err es una violacion de unicidad (SQLSTATE 23505)
 // de la restriccion dada (vacio = cualquiera).
 func isUniqueViolation(err error, constraint string) bool {

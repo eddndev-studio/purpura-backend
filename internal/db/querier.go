@@ -19,6 +19,10 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// Devuelve filas afectadas: 0 -> ErrEventNotFound.
 	DeleteEvent(ctx context.Context, arg DeleteEventParams) (int64, error)
+	// Borra la cuenta. events y user_credentials referencian users con ON DELETE
+	// CASCADE, asi que esta unica sentencia elimina tambien todos los datos del
+	// usuario. Devuelve las filas afectadas: 0 -> ErrUserNotFound.
+	DeleteUser(ctx context.Context, id string) (int64, error)
 	// Scoping estructural por user_id: 0 filas -> ErrEventNotFound (no filtra ajeno).
 	GetEventByID(ctx context.Context, arg GetEventByIDParams) (Event, error)
 	// Lee el hash para verificar el login (04 seccion 5.3). La ausencia de fila

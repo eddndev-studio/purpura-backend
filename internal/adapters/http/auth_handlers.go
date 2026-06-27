@@ -55,3 +55,14 @@ func (d Deps) handleGoogle(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, toAuthResponse(res))
 }
+
+// handleDeleteAccount elimina permanentemente la cuenta del usuario autenticado y
+// todos sus datos (cascada en BD). El id sale del sub del JWT (userIDFrom), nunca
+// del cuerpo: un usuario solo puede borrarse a si mismo. 204 sin cuerpo en exito.
+func (d Deps) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
+	if err := d.Auth.DeleteAccount(r.Context(), userIDFrom(r)); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

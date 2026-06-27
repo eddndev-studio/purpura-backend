@@ -36,6 +36,7 @@ type AuthUseCases interface {
 	Register(ctx context.Context, in app.RegisterInput) (app.AuthResult, error)
 	Login(ctx context.Context, in app.LoginInput) (app.AuthResult, error)
 	AuthenticateWithGoogle(ctx context.Context, idToken string) (app.AuthResult, error)
+	DeleteAccount(ctx context.Context, userID string) error
 }
 
 // TokenVerifier verifica el JWT del header (lo cumple ports.TokenService).
@@ -100,6 +101,9 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/events/{id}", d.handleUpdateEvent)
 			r.Patch("/events/{id}/status", d.handleChangeStatus)
 			r.Delete("/events/{id}", d.handleDeleteEvent)
+
+			// Cuenta del usuario autenticado: el borrado cascada a todos sus datos.
+			r.Delete("/account", d.handleDeleteAccount)
 		})
 	})
 

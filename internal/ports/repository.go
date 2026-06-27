@@ -81,4 +81,8 @@ type UserRepository interface {
 	// password). Si el usuario no tiene credencial local:
 	// domain.ErrInvalidCredential (no distingue "no existe" de "sin password").
 	GetPasswordHash(ctx context.Context, userID string) (string, error)
+
+	// DeleteAccount elimina al usuario y, por ON DELETE CASCADE, todos sus datos
+	// (eventos y credenciales). Si no existe: domain.ErrUserNotFound.
+	DeleteAccount(ctx context.Context, id string) error
 }
