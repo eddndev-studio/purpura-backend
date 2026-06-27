@@ -14,3 +14,10 @@ WHERE lower(email) = lower($1);
 -- name: GetUserByID :one
 SELECT * FROM users
 WHERE id = $1;
+
+-- name: DeleteUser :execrows
+-- Borra la cuenta. events y user_credentials referencian users con ON DELETE
+-- CASCADE, asi que esta unica sentencia elimina tambien todos los datos del
+-- usuario. Devuelve las filas afectadas: 0 -> ErrUserNotFound.
+DELETE FROM users
+WHERE id = $1;

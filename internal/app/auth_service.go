@@ -117,6 +117,16 @@ func (s *AuthService) AuthenticateWithGoogle(ctx context.Context, idToken string
 	return s.issue(ctx, u)
 }
 
+// DeleteAccount elimina permanentemente la cuenta del usuario y, por cascada en
+// la BD, todos sus datos (eventos y credencial). userID viene del sub del JWT
+// (identidad autoritativa), asi que solo se borra a si mismo. Si la cuenta ya no
+// existe -> domain.ErrUserNotFound (404). Nota: el JWT es stateless; un token ya
+// emitido sigue siendo criptograficamente valido hasta expirar, pero toda
+// operacion de datos posterior fallara porque el usuario dejo de existir.
+func (s *AuthService) DeleteAccount(ctx context.Context, userID string) error {
+	return s.Users.DeleteAccount(ctx, userID)
+}
+
 // issue emite el access token para el usuario y arma el AuthResult.
 func (s *AuthService) issue(ctx context.Context, u *domain.User) (AuthResult, error) {
 	tok, err := s.Tokens.Issue(ctx, u)

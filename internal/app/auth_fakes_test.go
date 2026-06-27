@@ -75,6 +75,19 @@ func (r *fakeUserRepo) GetPasswordHash(_ context.Context, userID string) (string
 	return h, nil
 }
 
+func (r *fakeUserRepo) DeleteAccount(_ context.Context, id string) error {
+	u, ok := r.byID[id]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	// Espeja el ON DELETE CASCADE: al borrar el usuario caen su credencial y el
+	// indice por email.
+	delete(r.byEmail, strings.ToLower(u.Email))
+	delete(r.creds, id)
+	delete(r.byID, id)
+	return nil
+}
+
 // fakeTokenService emite un token deterministico y verifica el formato inverso.
 type fakeTokenService struct{}
 

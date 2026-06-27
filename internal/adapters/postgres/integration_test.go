@@ -253,6 +253,47 @@ func TestIntegration_UserCredentialAtomicAndCascade(t *testing.T) {
 	}
 }
 
+func TestIntegration_DeleteAccountCascades(t *testing.T) {
+	pool := mustPool(t)
+	ctx := context.Background()
+	users := NewUserRepository(pool)
+	events := NewEventRepository(pool)
+
+	// Cuenta password con credencial + un evento propio.
+	u, err := domain.NewUser("borrar@example.com", "Borrar", domain.AuthPassword)
+	if err != nil {
+		t.Fatalf("NewUser: %v", err)
+	}
+	u.ID = uuid.NewString()
+	u.CreatedAt = time.Now().UTC()
+	if err := users.CreateWithPassword(ctx, u, "hash:secreta"); err != nil {
+		t.Fatalf("createWithPassword: %v", err)
+	}
+	e := newSeedEvent(t, u.ID, time.Now().UTC(), domain.TypeOtros)
+	if err := events.Create(ctx, e); err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	// DeleteAccount borra al usuario y, por ON DELETE CASCADE, su credencial y eventos.
+	if err := users.DeleteAccount(ctx, u.ID); err != nil {
+		t.Fatalf("DeleteAccount: %v", err)
+	}
+	if _, err := users.FindByID(ctx, u.ID); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Errorf("usuario debio borrarse: %v", err)
+	}
+	if _, err := users.GetPasswordHash(ctx, u.ID); !errors.Is(err, domain.ErrInvalidCredential) {
+		t.Errorf("cascade: la credencial debio caer con el usuario: %v", err)
+	}
+	if _, err := events.FindByID(ctx, u.ID, e.ID); !errors.Is(err, domain.ErrEventNotFound) {
+		t.Errorf("cascade: el evento debio borrarse con el usuario: %v", err)
+	}
+
+	// Segundo borrado de una cuenta ya inexistente -> ErrUserNotFound (0 filas).
+	if err := users.DeleteAccount(ctx, u.ID); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Errorf("borrado idempotente -> ErrUserNotFound, obtuve %v", err)
+	}
+}
+
 func days(es []domain.Event) []int {
 	out := make([]int, len(es))
 	for i, e := range es {

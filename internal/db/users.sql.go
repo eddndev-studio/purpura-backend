@@ -45,6 +45,22 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const deleteUser = `-- name: DeleteUser :execrows
+DELETE FROM users
+WHERE id = $1
+`
+
+// Borra la cuenta. events y user_credentials referencian users con ON DELETE
+// CASCADE, asi que esta unica sentencia elimina tambien todos los datos del
+// usuario. Devuelve las filas afectadas: 0 -> ErrUserNotFound.
+func (q *Queries) DeleteUser(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, nombre, auth_provider, created_at FROM users
 WHERE lower(email) = lower($1)

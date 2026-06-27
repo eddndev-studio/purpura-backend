@@ -73,6 +73,9 @@ func (f *fakeEvents) ImportEvents(_ context.Context, userID string, _ app.Import
 type fakeAuth struct {
 	res app.AuthResult
 	err error
+
+	deleteErr   error
+	gotDeleteID string
 }
 
 func (f *fakeAuth) Register(context.Context, app.RegisterInput) (app.AuthResult, error) {
@@ -83,6 +86,10 @@ func (f *fakeAuth) Login(context.Context, app.LoginInput) (app.AuthResult, error
 }
 func (f *fakeAuth) AuthenticateWithGoogle(context.Context, string) (app.AuthResult, error) {
 	return f.res, f.err
+}
+func (f *fakeAuth) DeleteAccount(_ context.Context, userID string) error {
+	f.gotDeleteID = userID
+	return f.deleteErr
 }
 
 type fakeToken struct {
@@ -270,6 +277,38 @@ func TestDelete_204(t *testing.T) {
 	}
 	if rec.Body.Len() != 0 {
 		t.Errorf("204 no debe tener cuerpo: %q", rec.Body.String())
+	}
+}
+
+func TestDeleteAccount_204AndOwnerFromToken(t *testing.T) {
+	auth := &fakeAuth{}
+	h := newServer(Deps{Events: &fakeEvents{}, Auth: auth})
+	rec := do(h, http.MethodDelete, "/api/v1/account", "", true)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, quiero 204 (%s)", rec.Code, rec.Body.String())
+	}
+	if rec.Body.Len() != 0 {
+		t.Errorf("204 no debe tener cuerpo: %q", rec.Body.String())
+	}
+	// La identidad a borrar sale del sub del token, nunca del cuerpo.
+	if auth.gotDeleteID != "user-1" {
+		t.Errorf("userID = %q, quiero user-1 (del token)", auth.gotDeleteID)
+	}
+}
+
+func TestDeleteAccount_NoToken_401(t *testing.T) {
+	h := newServer(Deps{Events: &fakeEvents{}, Auth: &fakeAuth{}})
+	rec := do(h, http.MethodDelete, "/api/v1/account", "", false)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, quiero 401", rec.Code)
+	}
+}
+
+func TestDeleteAccount_NotFound_404(t *testing.T) {
+	h := newServer(Deps{Events: &fakeEvents{}, Auth: &fakeAuth{deleteErr: domain.ErrUserNotFound}})
+	rec := do(h, http.MethodDelete, "/api/v1/account", "", true)
+	if rec.Code != http.StatusNotFound || decodeBody(t, rec)["code"] != "user_not_found" {
+		t.Fatalf("status/code = %d/%v, quiero 404/user_not_found", rec.Code, decodeBody(t, rec)["code"])
 	}
 }
 
