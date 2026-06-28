@@ -114,6 +114,11 @@ func (c Config) validate() error {
 	if c.JWTTTL <= 0 {
 		return fmt.Errorf("config: JWT_TTL_SECONDS debe ser positivo")
 	}
+	// Un TTL <= 0 mintaria tokens ya expirados (toda confirmacion daria 410) sin un
+	// error de arranque que lo delate: se valida igual que JWTTTL.
+	if c.EmailVerificationTTL <= 0 {
+		return fmt.Errorf("config: EMAIL_VERIFICATION_TTL_SECONDS debe ser positivo")
+	}
 	return nil
 }
 

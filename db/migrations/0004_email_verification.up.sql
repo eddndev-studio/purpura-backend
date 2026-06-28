@@ -1,11 +1,14 @@
 -- Verificacion de correo (Fase 2). El gate es SUAVE: email_verified nunca bloquea
--- el login; la app solo lo usa para un aviso ("verifica tu correo"). Las cuentas
--- de ORIGEN Google o con Google vinculado ya probaron el correo via el claim
--- email_verified del idToken, asi que el backfill las marca verificadas.
+-- el login; la app solo lo usa para un aviso ("verifica tu correo"). Backfill: SOLO
+-- las cuentas de ORIGEN Google nacen verificadas, porque su correo en ficha ES el
+-- del idToken de Google que AuthenticateWithGoogle exigio con email_verified=true.
+-- OJO: una cuenta password que vinculo Google NO se marca: vincular prueba el sub
+-- (la identidad Google), no que el correo en ficha sea suyo; ese correo sigue sin
+-- verificar y debe pasar por el flujo normal de verificacion.
 ALTER TABLE users ADD COLUMN email_verified boolean NOT NULL DEFAULT false;
 
 UPDATE users SET email_verified = true
-WHERE auth_provider = 'google' OR google_sub IS NOT NULL;
+WHERE auth_provider = 'google';
 
 -- Tokens de verificacion de correo: de un solo uso y con expiracion. Solo se
 -- guarda el HASH del token (sha256), nunca el valor crudo; el crudo viaja en el
