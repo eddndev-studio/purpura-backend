@@ -18,6 +18,10 @@ import (
 // violacion se traduce en ErrEmailTaken.
 const emailUniqueConstraint = "users_email_lower_uniq"
 
+// googleSubUniqueConstraint es la restriccion UNIQUE de users.google_sub
+// (generada por Postgres al declarar la columna). Su violacion -> ErrGoogleLinkConflict.
+const googleSubUniqueConstraint = "users_google_sub_key"
+
 // UserRepository implementa ports.UserRepository sobre sqlc + pgx.
 type UserRepository struct {
 	pool *pgxpool.Pool
@@ -91,6 +95,47 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 	}
 	u := toDomainUser(row)
 	return &u, nil
+}
+
+// FindByGoogleSub busca por el sub de Google; 0 filas -> ErrUserNotFound.
+func (r *UserRepository) FindByGoogleSub(ctx context.Context, sub string) (*domain.User, error) {
+	row, err := r.q.GetUserByGoogleSub(ctx, &sub)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("postgres: get user by google sub: %w", err)
+	}
+	u := toDomainUser(row)
+	return &u, nil
+}
+
+// LinkGoogleSub adjunta el sub de Google a la cuenta. Sub ya en otra cuenta
+// (violacion de unicidad) -> ErrGoogleLinkConflict; 0 filas -> ErrUserNotFound.
+func (r *UserRepository) LinkGoogleSub(ctx context.Context, userID, sub string) error {
+	n, err := r.q.LinkGoogleSub(ctx, db.LinkGoogleSubParams{ID: userID, GoogleSub: &sub})
+	if err != nil {
+		if isUniqueViolation(err, googleSubUniqueConstraint) {
+			return domain.ErrGoogleLinkConflict
+		}
+		return fmt.Errorf("postgres: link google sub: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+// ClearGoogleSub desvincula Google (google_sub = NULL); 0 filas -> ErrUserNotFound.
+func (r *UserRepository) ClearGoogleSub(ctx context.Context, userID string) error {
+	n, err := r.q.ClearGoogleSub(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("postgres: clear google sub: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
 }
 
 // GetPasswordHash lee el hash de credencial; ausencia -> ErrInvalidCredential
