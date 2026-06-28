@@ -6,7 +6,18 @@ package db
 
 import (
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type EmailVerificationToken struct {
+	ID        string             `json:"id"`
+	UserID    string             `json:"user_id"`
+	TokenHash string             `json:"token_hash"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	CreatedAt time.Time          `json:"created_at"`
+}
 
 type Event struct {
 	ID            string    `json:"id"`
@@ -26,12 +37,13 @@ type Event struct {
 }
 
 type User struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	Nombre       string    `json:"nombre"`
-	AuthProvider string    `json:"auth_provider"`
-	CreatedAt    time.Time `json:"created_at"`
-	GoogleSub    *string   `json:"google_sub"`
+	ID            string    `json:"id"`
+	Email         string    `json:"email"`
+	Nombre        string    `json:"nombre"`
+	AuthProvider  string    `json:"auth_provider"`
+	CreatedAt     time.Time `json:"created_at"`
+	GoogleSub     *string   `json:"google_sub"`
+	EmailVerified bool      `json:"email_verified"`
 }
 
 type UserCredential struct {

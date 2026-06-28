@@ -1,9 +1,11 @@
 -- name: CreateUser :one
 -- id y created_at los provee la aplicacion. google_sub es NULL salvo en cuentas
--- nacidas de Google (se sella con el sub del idToken). Una violacion de
+-- nacidas de Google (se sella con el sub del idToken). email_verified lo decide
+-- la aplicacion: true para cuentas de origen Google (el idToken ya dio fe del
+-- correo), false para registro por contrasena. Una violacion de
 -- users_email_lower_uniq se traduce en ErrEmailTaken.
-INSERT INTO users (id, email, nombre, auth_provider, google_sub, created_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO users (id, email, nombre, auth_provider, google_sub, email_verified, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: GetUserByEmail :one
@@ -32,6 +34,12 @@ WHERE id = $1;
 -- name: ClearGoogleSub :execrows
 -- Desvincula Google de la cuenta (google_sub = NULL). 0 filas -> ErrUserNotFound.
 UPDATE users SET google_sub = NULL
+WHERE id = $1;
+
+-- name: SetEmailVerified :execrows
+-- Marca el correo del usuario como verificado (gate suave; idempotente). 0 filas
+-- -> ErrUserNotFound.
+UPDATE users SET email_verified = true
 WHERE id = $1;
 
 -- name: DeleteUser :execrows
