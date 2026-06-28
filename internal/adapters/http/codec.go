@@ -66,10 +66,13 @@ func toEventResponses(es []domain.Event) []eventResponse {
 }
 
 type userResponse struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	Nombre       string    `json:"nombre"`
-	AuthProvider string    `json:"authProvider"`
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	Nombre       string `json:"nombre"`
+	AuthProvider string `json:"authProvider"`
+	// GoogleLinked: la cuenta tiene Google adjunto (entra tambien por Google).
+	// Derivado de google_sub != null; lo usa la app para mostrar Vincular/Desvincular.
+	GoogleLinked bool      `json:"googleLinked"`
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
@@ -80,18 +83,23 @@ type authResponse struct {
 	User        userResponse `json:"user"`
 }
 
+func toUserResponse(u *domain.User) userResponse {
+	return userResponse{
+		ID:           u.ID,
+		Email:        u.Email,
+		Nombre:       u.Nombre,
+		AuthProvider: string(u.AuthProvider),
+		GoogleLinked: u.GoogleLinked(),
+		CreatedAt:    u.CreatedAt,
+	}
+}
+
 func toAuthResponse(res app.AuthResult) authResponse {
 	return authResponse{
 		AccessToken: res.Token.AccessToken,
 		TokenType:   res.Token.TokenType,
 		ExpiresIn:   res.Token.ExpiresIn,
-		User: userResponse{
-			ID:           res.User.ID,
-			Email:        res.User.Email,
-			Nombre:       res.User.Nombre,
-			AuthProvider: string(res.User.AuthProvider),
-			CreatedAt:    res.User.CreatedAt,
-		},
+		User:        toUserResponse(res.User),
 	}
 }
 
@@ -226,6 +234,12 @@ type loginRequest struct {
 }
 
 type googleRequest struct {
+	IDToken string `json:"idToken"`
+}
+
+// linkGoogleRequest es el cuerpo de POST /account/link-google: el idToken de
+// Google que se adjunta a la cuenta autenticada.
+type linkGoogleRequest struct {
 	IDToken string `json:"idToken"`
 }
 

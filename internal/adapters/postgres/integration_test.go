@@ -50,6 +50,7 @@ func mustMigrate(t *testing.T, pool *pgxpool.Pool) {
 	for _, f := range []string{
 		"0001_init_schema.up.sql",
 		"0002_user_credentials.up.sql",
+		"0003_add_google_sub.up.sql",
 	} {
 		path := filepath.Join("..", "..", "..", "db", "migrations", f)
 		sql, err := os.ReadFile(path)
@@ -324,6 +325,61 @@ func TestIntegration_DeleteAccountGoogleNoCredential(t *testing.T) {
 	}
 	if _, err := events.FindByID(ctx, u.ID, e.ID); !errors.Is(err, domain.ErrEventNotFound) {
 		t.Errorf("cascade: el evento debio borrarse con el usuario google: %v", err)
+	}
+}
+
+func TestIntegration_GoogleSubLinkLifecycle(t *testing.T) {
+	pool := mustPool(t)
+	ctx := context.Background()
+	users := NewUserRepository(pool)
+
+	u := seedUser(t, pool, "link@example.com") // cuenta password, google_sub NULL
+	// Sin vincular: SELECT * trae GoogleSub nil y no se halla por sub.
+	if got, err := users.FindByID(ctx, u.ID); err != nil || got.GoogleSub != nil {
+		t.Fatalf("recien creada no debe tener sub: sub=%v err=%v", got.GoogleSub, err)
+	}
+	if _, err := users.FindByGoogleSub(ctx, "sub-link"); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Fatalf("sub inexistente -> ErrUserNotFound, obtuve %v", err)
+	}
+
+	// Vincular y hallar por sub.
+	if err := users.LinkGoogleSub(ctx, u.ID, "sub-link"); err != nil {
+		t.Fatalf("LinkGoogleSub: %v", err)
+	}
+	got, err := users.FindByGoogleSub(ctx, "sub-link")
+	if err != nil || got.ID != u.ID || got.GoogleSub == nil || *got.GoogleSub != "sub-link" {
+		t.Fatalf("tras vincular debe hallarse por sub con google_sub mapeado: %+v err=%v", got, err)
+	}
+
+	// Unicidad: otro usuario no puede tomar el mismo sub.
+	other := seedUser(t, pool, "other-link@example.com")
+	if err := users.LinkGoogleSub(ctx, other.ID, "sub-link"); !errors.Is(err, domain.ErrGoogleLinkConflict) {
+		t.Fatalf("sub duplicado -> ErrGoogleLinkConflict (23505), obtuve %v", err)
+	}
+
+	// Desvincular deja NULL e invisibiliza por sub.
+	if err := users.ClearGoogleSub(ctx, u.ID); err != nil {
+		t.Fatalf("ClearGoogleSub: %v", err)
+	}
+	if _, err := users.FindByGoogleSub(ctx, "sub-link"); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Errorf("tras desvincular no debe hallarse por sub, obtuve %v", err)
+	}
+	// Y ahora el sub queda libre para otra cuenta.
+	if err := users.LinkGoogleSub(ctx, other.ID, "sub-link"); err != nil {
+		t.Errorf("el sub liberado debe poder re-vincularse: %v", err)
+	}
+}
+
+func TestIntegration_LinkClearGoogleSubUnknownUser(t *testing.T) {
+	pool := mustPool(t)
+	ctx := context.Background()
+	users := NewUserRepository(pool)
+	ghost := uuid.NewString()
+	if err := users.LinkGoogleSub(ctx, ghost, "sub-x"); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Errorf("LinkGoogleSub a usuario inexistente -> ErrUserNotFound, obtuve %v", err)
+	}
+	if err := users.ClearGoogleSub(ctx, ghost); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Errorf("ClearGoogleSub a usuario inexistente -> ErrUserNotFound, obtuve %v", err)
 	}
 }
 

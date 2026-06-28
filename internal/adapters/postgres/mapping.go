@@ -75,6 +75,7 @@ func toDomainUser(u db.User) domain.User {
 		Email:        u.Email,
 		Nombre:       u.Nombre,
 		AuthProvider: domain.AuthProvider(u.AuthProvider),
+		GoogleSub:    u.GoogleSub,
 		CreatedAt:    u.CreatedAt,
 	}
 }
@@ -85,6 +86,7 @@ func createUserParams(u *domain.User) db.CreateUserParams {
 		Email:        u.Email,
 		Nombre:       u.Nombre,
 		AuthProvider: string(u.AuthProvider),
+		GoogleSub:    u.GoogleSub,
 		CreatedAt:    u.CreatedAt,
 	}
 }

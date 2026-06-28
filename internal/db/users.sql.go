@@ -10,10 +10,24 @@ import (
 	"time"
 )
 
+const clearGoogleSub = `-- name: ClearGoogleSub :execrows
+UPDATE users SET google_sub = NULL
+WHERE id = $1
+`
+
+// Desvincula Google de la cuenta (google_sub = NULL). 0 filas -> ErrUserNotFound.
+func (q *Queries) ClearGoogleSub(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, clearGoogleSub, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, email, nombre, auth_provider, created_at)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, nombre, auth_provider, created_at
+INSERT INTO users (id, email, nombre, auth_provider, google_sub, created_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, email, nombre, auth_provider, created_at, google_sub
 `
 
 type CreateUserParams struct {
@@ -21,10 +35,12 @@ type CreateUserParams struct {
 	Email        string    `json:"email"`
 	Nombre       string    `json:"nombre"`
 	AuthProvider string    `json:"auth_provider"`
+	GoogleSub    *string   `json:"google_sub"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// id y created_at los provee la aplicacion. Una violacion de
+// id y created_at los provee la aplicacion. google_sub es NULL salvo en cuentas
+// nacidas de Google (se sella con el sub del idToken). Una violacion de
 // users_email_lower_uniq se traduce en ErrEmailTaken.
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, createUser,
@@ -32,6 +48,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.Email,
 		arg.Nombre,
 		arg.AuthProvider,
+		arg.GoogleSub,
 		arg.CreatedAt,
 	)
 	var i User
@@ -41,6 +58,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Nombre,
 		&i.AuthProvider,
 		&i.CreatedAt,
+		&i.GoogleSub,
 	)
 	return i, err
 }
@@ -62,7 +80,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id string) (int64, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, nombre, auth_provider, created_at FROM users
+SELECT id, email, nombre, auth_provider, created_at, google_sub FROM users
 WHERE lower(email) = lower($1)
 `
 
@@ -77,12 +95,34 @@ func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (User, error
 		&i.Nombre,
 		&i.AuthProvider,
 		&i.CreatedAt,
+		&i.GoogleSub,
+	)
+	return i, err
+}
+
+const getUserByGoogleSub = `-- name: GetUserByGoogleSub :one
+SELECT id, email, nombre, auth_provider, created_at, google_sub FROM users
+WHERE google_sub = $1
+`
+
+// Lookup por el sub inmutable de Google (la llave de vinculacion, no el email).
+// 0 filas -> ErrUserNotFound.
+func (q *Queries) GetUserByGoogleSub(ctx context.Context, googleSub *string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByGoogleSub, googleSub)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Nombre,
+		&i.AuthProvider,
+		&i.CreatedAt,
+		&i.GoogleSub,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, nombre, auth_provider, created_at FROM users
+SELECT id, email, nombre, auth_provider, created_at, google_sub FROM users
 WHERE id = $1
 `
 
@@ -95,6 +135,28 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.Nombre,
 		&i.AuthProvider,
 		&i.CreatedAt,
+		&i.GoogleSub,
 	)
 	return i, err
+}
+
+const linkGoogleSub = `-- name: LinkGoogleSub :execrows
+UPDATE users SET google_sub = $2
+WHERE id = $1
+`
+
+type LinkGoogleSubParams struct {
+	ID        string  `json:"id"`
+	GoogleSub *string `json:"google_sub"`
+}
+
+// Adjunta el sub de Google a la cuenta. Una violacion de unicidad (el sub ya
+// esta en otra cuenta) la traduce el repo a ErrGoogleLinkConflict.
+// 0 filas -> ErrUserNotFound.
+func (q *Queries) LinkGoogleSub(ctx context.Context, arg LinkGoogleSubParams) (int64, error) {
+	result, err := q.db.Exec(ctx, linkGoogleSub, arg.ID, arg.GoogleSub)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

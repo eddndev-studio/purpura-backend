@@ -76,6 +76,15 @@ type fakeAuth struct {
 
 	deleteErr   error
 	gotDeleteID string
+
+	linkUser   *domain.User
+	linkErr    error
+	gotLinkID  string
+	gotLinkTok string
+
+	unlinkUser  *domain.User
+	unlinkErr   error
+	gotUnlinkID string
 }
 
 func (f *fakeAuth) Register(context.Context, app.RegisterInput) (app.AuthResult, error) {
@@ -86,6 +95,14 @@ func (f *fakeAuth) Login(context.Context, app.LoginInput) (app.AuthResult, error
 }
 func (f *fakeAuth) AuthenticateWithGoogle(context.Context, string) (app.AuthResult, error) {
 	return f.res, f.err
+}
+func (f *fakeAuth) LinkGoogle(_ context.Context, userID, idToken string) (*domain.User, error) {
+	f.gotLinkID, f.gotLinkTok = userID, idToken
+	return f.linkUser, f.linkErr
+}
+func (f *fakeAuth) UnlinkGoogle(_ context.Context, userID string) (*domain.User, error) {
+	f.gotUnlinkID = userID
+	return f.unlinkUser, f.unlinkErr
 }
 func (f *fakeAuth) DeleteAccount(_ context.Context, userID string) error {
 	f.gotDeleteID = userID

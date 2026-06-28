@@ -77,6 +77,19 @@ type UserRepository interface {
 	// FindByID busca por id. Si no existe: domain.ErrUserNotFound.
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 
+	// FindByGoogleSub busca por el sub inmutable de Google (llave de
+	// vinculacion). Si no existe ninguna cuenta con ese sub: domain.ErrUserNotFound.
+	FindByGoogleSub(ctx context.Context, sub string) (*domain.User, error)
+
+	// LinkGoogleSub adjunta el sub de Google a la cuenta. Si el sub ya esta en
+	// otra cuenta: domain.ErrGoogleLinkConflict. Si el usuario no existe:
+	// domain.ErrUserNotFound.
+	LinkGoogleSub(ctx context.Context, userID, sub string) error
+
+	// ClearGoogleSub desvincula Google de la cuenta (google_sub = NULL). Si el
+	// usuario no existe: domain.ErrUserNotFound.
+	ClearGoogleSub(ctx context.Context, userID string) error
+
 	// GetPasswordHash devuelve el hash de credencial del usuario (cuenta
 	// password). Si el usuario no tiene credencial local:
 	// domain.ErrInvalidCredential (no distingue "no existe" de "sin password").

@@ -36,6 +36,8 @@ type AuthUseCases interface {
 	Register(ctx context.Context, in app.RegisterInput) (app.AuthResult, error)
 	Login(ctx context.Context, in app.LoginInput) (app.AuthResult, error)
 	AuthenticateWithGoogle(ctx context.Context, idToken string) (app.AuthResult, error)
+	LinkGoogle(ctx context.Context, userID, idToken string) (*domain.User, error)
+	UnlinkGoogle(ctx context.Context, userID string) (*domain.User, error)
 	DeleteAccount(ctx context.Context, userID string) error
 }
 
@@ -102,7 +104,11 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/events/{id}/status", d.handleChangeStatus)
 			r.Delete("/events/{id}", d.handleDeleteEvent)
 
-			// Cuenta del usuario autenticado: el borrado cascada a todos sus datos.
+			// Cuenta del usuario autenticado: vincular/desvincular Google (el
+			// usuario ya esta logueado, por eso es seguro) y borrar la cuenta
+			// (cascada a todos sus datos).
+			r.Post("/account/link-google", d.handleLinkGoogle)
+			r.Delete("/account/link-google", d.handleUnlinkGoogle)
 			r.Delete("/account", d.handleDeleteAccount)
 		})
 	})
