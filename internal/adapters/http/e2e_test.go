@@ -72,7 +72,7 @@ func migrate(t *testing.T, pool *pgxpool.Pool) {
 	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS user_credentials, events, users CASCADE;"); err != nil {
 		t.Fatalf("drop: %v", err)
 	}
-	for _, f := range []string{"0001_init_schema.up.sql", "0002_user_credentials.up.sql"} {
+	for _, f := range []string{"0001_init_schema.up.sql", "0002_user_credentials.up.sql", "0003_add_google_sub.up.sql"} {
 		sql, err := os.ReadFile(filepath.Join("..", "..", "..", "db", "migrations", f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)

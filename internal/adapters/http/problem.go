@@ -35,21 +35,23 @@ type problemFieldError struct {
 // (convencion de codigo del proyecto); el cliente mapea `code` a su propia
 // etiqueta acentuada (04: el cliente no parsea prosa, usa `code`).
 var problemTitles = map[string]string{
-	"invalid_event_type": "Tipo de evento invalido",
-	"invalid_status":     "Estatus invalido",
-	"invalid_reminder":   "Recordatorio invalido",
-	"empty_description":  "Descripcion invalida",
-	"invalid_location":   "Ubicacion invalida",
-	"event_not_found":    "Evento no encontrado",
-	"user_not_found":     "Usuario no encontrado",
-	"email_taken":        "Correo ya registrado",
-	"invalid_credential": "Credenciales invalidas",
-	"validation_failed":  "Validacion fallida",
-	"unauthorized":       "No autorizado",
-	"bad_request":        "Solicitud mal formada",
-	"method_not_allowed": "Metodo no permitido",
-	"payload_too_large":  "Carga demasiado grande",
-	"internal_error":     "Error interno",
+	"invalid_event_type":   "Tipo de evento invalido",
+	"invalid_status":       "Estatus invalido",
+	"invalid_reminder":     "Recordatorio invalido",
+	"empty_description":    "Descripcion invalida",
+	"invalid_location":     "Ubicacion invalida",
+	"event_not_found":      "Evento no encontrado",
+	"user_not_found":       "Usuario no encontrado",
+	"email_taken":          "Correo ya registrado",
+	"google_link_conflict": "Conflicto al vincular Google",
+	"cannot_unlink_google": "No se puede desvincular Google",
+	"invalid_credential":   "Credenciales invalidas",
+	"validation_failed":    "Validacion fallida",
+	"unauthorized":         "No autorizado",
+	"bad_request":          "Solicitud mal formada",
+	"method_not_allowed":   "Metodo no permitido",
+	"payload_too_large":    "Carga demasiado grande",
+	"internal_error":       "Error interno",
 }
 
 // statusForCode mapea el codigo estable al status HTTP (04 secciones 4.1/4.2).
@@ -60,7 +62,7 @@ func statusForCode(code string) int {
 		return http.StatusUnprocessableEntity
 	case "event_not_found", "user_not_found":
 		return http.StatusNotFound
-	case "email_taken":
+	case "email_taken", "google_link_conflict", "cannot_unlink_google":
 		return http.StatusConflict
 	case "invalid_credential", "unauthorized":
 		return http.StatusUnauthorized
