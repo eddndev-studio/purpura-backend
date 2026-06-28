@@ -35,25 +35,27 @@ type problemFieldError struct {
 // (convencion de codigo del proyecto); el cliente mapea `code` a su propia
 // etiqueta acentuada (04: el cliente no parsea prosa, usa `code`).
 var problemTitles = map[string]string{
-	"invalid_event_type":   "Tipo de evento invalido",
-	"invalid_status":       "Estatus invalido",
-	"invalid_reminder":     "Recordatorio invalido",
-	"empty_description":    "Descripcion invalida",
-	"invalid_location":     "Ubicacion invalida",
-	"event_not_found":      "Evento no encontrado",
-	"user_not_found":       "Usuario no encontrado",
-	"email_taken":          "Correo ya registrado",
-	"google_link_conflict": "Conflicto al vincular Google",
-	"cannot_unlink_google": "No se puede desvincular Google",
-	"email_not_verified":   "Correo de Google no verificado",
-	"invalid_google_token": "Token de Google invalido",
-	"invalid_credential":   "Credenciales invalidas",
-	"validation_failed":    "Validacion fallida",
-	"unauthorized":         "No autorizado",
-	"bad_request":          "Solicitud mal formada",
-	"method_not_allowed":   "Metodo no permitido",
-	"payload_too_large":    "Carga demasiado grande",
-	"internal_error":       "Error interno",
+	"invalid_event_type":         "Tipo de evento invalido",
+	"invalid_status":             "Estatus invalido",
+	"invalid_reminder":           "Recordatorio invalido",
+	"empty_description":          "Descripcion invalida",
+	"invalid_location":           "Ubicacion invalida",
+	"event_not_found":            "Evento no encontrado",
+	"user_not_found":             "Usuario no encontrado",
+	"email_taken":                "Correo ya registrado",
+	"google_link_conflict":       "Conflicto al vincular Google",
+	"cannot_unlink_google":       "No se puede desvincular Google",
+	"email_not_verified":         "Correo de Google no verificado",
+	"invalid_google_token":       "Token de Google invalido",
+	"invalid_verification_token": "Token de verificacion invalido",
+	"verification_token_expired": "Token de verificacion expirado",
+	"invalid_credential":         "Credenciales invalidas",
+	"validation_failed":          "Validacion fallida",
+	"unauthorized":               "No autorizado",
+	"bad_request":                "Solicitud mal formada",
+	"method_not_allowed":         "Metodo no permitido",
+	"payload_too_large":          "Carga demasiado grande",
+	"internal_error":             "Error interno",
 }
 
 // statusForCode mapea el codigo estable al status HTTP (04 secciones 4.1/4.2).
@@ -70,8 +72,11 @@ func statusForCode(code string) int {
 		return http.StatusUnauthorized
 	case "email_not_verified":
 		return http.StatusForbidden
-	case "bad_request", "invalid_google_token":
+	case "bad_request", "invalid_google_token", "invalid_verification_token":
 		return http.StatusBadRequest
+	case "verification_token_expired":
+		// 410 Gone: el token existio pero ya no es valido; el cliente debe pedir uno nuevo.
+		return http.StatusGone
 	case "method_not_allowed":
 		return http.StatusMethodNotAllowed
 	case "payload_too_large":

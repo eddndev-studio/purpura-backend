@@ -38,7 +38,15 @@ type AuthUseCases interface {
 	AuthenticateWithGoogle(ctx context.Context, idToken string) (app.AuthResult, error)
 	LinkGoogle(ctx context.Context, userID, idToken string) (*domain.User, error)
 	UnlinkGoogle(ctx context.Context, userID string) (*domain.User, error)
+	Me(ctx context.Context, userID string) (*domain.User, error)
 	DeleteAccount(ctx context.Context, userID string) error
+}
+
+// VerificationUseCases es el subconjunto de VerificationService que consume el
+// adaptador (verificacion de correo).
+type VerificationUseCases interface {
+	RequestVerification(ctx context.Context, userID string) error
+	ConfirmVerification(ctx context.Context, rawToken string) error
 }
 
 // TokenVerifier verifica el JWT del header (lo cumple ports.TokenService).
@@ -55,6 +63,7 @@ type Pinger interface {
 type Deps struct {
 	Events       EventUseCases
 	Auth         AuthUseCases
+	Verification VerificationUseCases
 	Tokens       TokenVerifier
 	Pinger       Pinger
 	CORSOrigins  []string
@@ -84,11 +93,20 @@ func NewRouter(d Deps) http.Handler {
 	r.Get("/health", d.handleHealth)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Rutas publicas de autenticacion (la credencial viaja en el cuerpo).
 		r.Route("/auth", func(r chi.Router) {
+			// Publicas: la credencial viaja en el cuerpo (register/login/google) o
+			// el token de un solo uso ES la credencial (verify-email/confirm).
 			r.Post("/register", d.handleRegister)
 			r.Post("/login", d.handleLogin)
 			r.Post("/google", d.handleGoogle)
+			r.Post("/verify-email/confirm", d.handleConfirmVerification)
+
+			// Autenticadas dentro de /auth (requieren JWT del usuario).
+			r.Group(func(r chi.Router) {
+				r.Use(d.authMiddleware)
+				r.Get("/me", d.handleMe)
+				r.Post("/verify-email/request", d.handleRequestVerification)
+			})
 		})
 
 		// Rutas de evento, protegidas por JWT. Se usan paths /events completos

@@ -72,8 +72,11 @@ type userResponse struct {
 	AuthProvider string `json:"authProvider"`
 	// GoogleLinked: la cuenta tiene Google adjunto (entra tambien por Google).
 	// Derivado de google_sub != null; lo usa la app para mostrar Vincular/Desvincular.
-	GoogleLinked bool      `json:"googleLinked"`
-	CreatedAt    time.Time `json:"createdAt"`
+	GoogleLinked bool `json:"googleLinked"`
+	// EmailVerified: el dueno comprobo el correo (gate suave). La app lo usa para
+	// un aviso ("verifica tu correo"); nunca bloquea el acceso.
+	EmailVerified bool      `json:"emailVerified"`
+	CreatedAt     time.Time `json:"createdAt"`
 }
 
 type authResponse struct {
@@ -85,12 +88,13 @@ type authResponse struct {
 
 func toUserResponse(u *domain.User) userResponse {
 	return userResponse{
-		ID:           u.ID,
-		Email:        u.Email,
-		Nombre:       u.Nombre,
-		AuthProvider: string(u.AuthProvider),
-		GoogleLinked: u.GoogleLinked(),
-		CreatedAt:    u.CreatedAt,
+		ID:            u.ID,
+		Email:         u.Email,
+		Nombre:        u.Nombre,
+		AuthProvider:  string(u.AuthProvider),
+		GoogleLinked:  u.GoogleLinked(),
+		EmailVerified: u.EmailVerified,
+		CreatedAt:     u.CreatedAt,
 	}
 }
 
@@ -241,6 +245,13 @@ type googleRequest struct {
 // Google que se adjunta a la cuenta autenticada.
 type linkGoogleRequest struct {
 	IDToken string `json:"idToken"`
+}
+
+// confirmVerificationRequest es el cuerpo de POST /auth/verify-email/confirm: el
+// token crudo del enlace del correo. Es publico: el token de un solo uso ES la
+// credencial.
+type confirmVerificationRequest struct {
+	Token string `json:"token"`
 }
 
 type importEventRequest struct {

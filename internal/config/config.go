@@ -29,6 +29,14 @@ type Config struct {
 	GoogleClientID string
 	BcryptCost     int
 
+	// Verificacion de correo (Fase 2). Sin secretos obligatorios: si ResendAPIKey
+	// esta vacia, el composition root usa un EmailSender de log (no brickea el
+	// despliegue). EmailFrom debe ser un remitente verificado en Resend.
+	ResendAPIKey         string
+	EmailFrom            string
+	EmailVerifyURL       string
+	EmailVerificationTTL time.Duration
+
 	CORSOrigins  []string
 	LogLevel     slog.Level
 	MaxBodyBytes int64
@@ -47,9 +55,18 @@ func Load() (Config, error) {
 		JWTIssuer:        getenv("JWT_ISSUER", "purpura-backend"),
 		JWTAudience:      getenv("JWT_AUDIENCE", "purpura-app"),
 		GoogleClientID:   os.Getenv("GOOGLE_CLIENT_ID"),
+		ResendAPIKey:     os.Getenv("RESEND_API_KEY"),
+		EmailFrom:        getenv("EMAIL_FROM", "noreply@purpura.eddn.dev"),
+		EmailVerifyURL:   getenv("EMAIL_VERIFY_URL", "https://purpura.eddn.dev/verify"),
 		CORSOrigins:      splitCSV(getenv("CORS_ALLOWED_ORIGINS", "*")),
 		LogLevel:         parseLevel(getenv("LOG_LEVEL", "info")),
 	}
+
+	verifTTL, err := getenvInt("EMAIL_VERIFICATION_TTL_SECONDS", 86400)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.EmailVerificationTTL = time.Duration(verifTTL) * time.Second
 
 	ttl, err := getenvInt("JWT_TTL_SECONDS", 86400)
 	if err != nil {
