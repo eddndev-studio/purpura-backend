@@ -9,12 +9,15 @@ import (
 )
 
 type Querier interface {
+	// Desvincula Google de la cuenta (google_sub = NULL). 0 filas -> ErrUserNotFound.
+	ClearGoogleSub(ctx context.Context, id string) (int64, error)
 	// Inserta el hash de una cuenta local. Corre en la MISMA transaccion (pgx) que
 	// el INSERT en users de register (04 seccion 5.2), para garantizar atomicidad.
 	CreateCredential(ctx context.Context, arg CreateCredentialParams) error
 	// El id, created_at y updated_at los provee la aplicacion (sellado app-layer).
 	CreateEvent(ctx context.Context, arg CreateEventParams) (Event, error)
-	// id y created_at los provee la aplicacion. Una violacion de
+	// id y created_at los provee la aplicacion. google_sub es NULL salvo en cuentas
+	// nacidas de Google (se sella con el sub del idToken). Una violacion de
 	// users_email_lower_uniq se traduce en ErrEmailTaken.
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// Devuelve filas afectadas: 0 -> ErrEventNotFound.
@@ -31,7 +34,14 @@ type Querier interface {
 	// Lookup case-insensitive via el indice funcional users_email_lower_uniq.
 	// 0 filas -> ErrUserNotFound.
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
+	// Lookup por el sub inmutable de Google (la llave de vinculacion, no el email).
+	// 0 filas -> ErrUserNotFound.
+	GetUserByGoogleSub(ctx context.Context, googleSub *string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
+	// Adjunta el sub de Google a la cuenta. Una violacion de unicidad (el sub ya
+	// esta en otra cuenta) la traduce el repo a ErrGoogleLinkConflict.
+	// 0 filas -> ErrUserNotFound.
+	LinkGoogleSub(ctx context.Context, arg LinkGoogleSubParams) (int64, error)
 	// updated_at lo re-sella la aplicacion (05 seccion 4.1). Scoping por user_id.
 	UpdateEvent(ctx context.Context, arg UpdateEventParams) (Event, error)
 	// Actualiza el hash (cambio de contrasena). La aplicacion fija updated_at.

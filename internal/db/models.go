@@ -31,6 +31,7 @@ type User struct {
 	Nombre       string    `json:"nombre"`
 	AuthProvider string    `json:"auth_provider"`
 	CreatedAt    time.Time `json:"created_at"`
+	GoogleSub    *string   `json:"google_sub"`
 }
 
 type UserCredential struct {
