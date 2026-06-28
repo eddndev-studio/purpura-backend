@@ -13,7 +13,18 @@ type User struct {
 	Email        string
 	Nombre       string
 	AuthProvider AuthProvider
-	CreatedAt    time.Time
+	// GoogleSub es el 'sub' inmutable del idToken de Google cuando la cuenta
+	// tiene Google adjunto (nil si no). Es la LLAVE de vinculacion: ortogonal a
+	// AuthProvider (el proveedor de ORIGEN), permite que una cuenta password
+	// entre tambien por Google una vez vinculada. Nunca se llavea por email.
+	GoogleSub *string
+	CreatedAt time.Time
+}
+
+// GoogleLinked indica si la cuenta tiene Google adjunto (entra tambien por
+// Google). Es el flag derivado que viaja en el payload del usuario.
+func (u User) GoogleLinked() bool {
+	return u.GoogleSub != nil
 }
 
 // NewUser construye un User validando las invariantes de dominio: email con

@@ -46,10 +46,34 @@ func (v *GoogleVerifier) Verify(ctx context.Context, idToken string) (ports.Goog
 	if !googleIssuers[payload.Issuer] {
 		return ports.GoogleIdentity{}, fmt.Errorf("google: issuer no confiable: %q", payload.Issuer)
 	}
+	// sub: identificador inmutable de la cuenta (llave de vinculacion). Sin el no
+	// se puede reconciliar de forma estable -> rechazar.
+	if payload.Subject == "" {
+		return ports.GoogleIdentity{}, fmt.Errorf("google: idToken sin sub")
+	}
 	email, _ := payload.Claims["email"].(string)
 	if email == "" {
 		return ports.GoogleIdentity{}, fmt.Errorf("google: idToken sin email")
 	}
 	name, _ := payload.Claims["name"].(string)
-	return ports.GoogleIdentity{Email: email, Nombre: name}, nil
+	return ports.GoogleIdentity{
+		Sub:           payload.Subject,
+		Email:         email,
+		Nombre:        name,
+		EmailVerified: claimBool(payload.Claims["email_verified"]),
+	}, nil
+}
+
+// claimBool interpreta un claim como booleano: acepta el bool nativo o la cadena
+// "true" (algunos flujos serializan email_verified como string). Cualquier otra
+// cosa (incluida la ausencia) es false.
+func claimBool(v any) bool {
+	switch b := v.(type) {
+	case bool:
+		return b
+	case string:
+		return b == "true"
+	default:
+		return false
+	}
 }
