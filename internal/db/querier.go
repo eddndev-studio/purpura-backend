@@ -17,9 +17,14 @@ type Querier interface {
 	// El id, created_at y updated_at los provee la aplicacion (sellado app-layer).
 	CreateEvent(ctx context.Context, arg CreateEventParams) (Event, error)
 	// id y created_at los provee la aplicacion. google_sub es NULL salvo en cuentas
-	// nacidas de Google (se sella con el sub del idToken). Una violacion de
+	// nacidas de Google (se sella con el sub del idToken). email_verified lo decide
+	// la aplicacion: true para cuentas de origen Google (el idToken ya dio fe del
+	// correo), false para registro por contrasena. Una violacion de
 	// users_email_lower_uniq se traduce en ErrEmailTaken.
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	// id, token_hash, expires_at y created_at los provee la aplicacion. Solo se
+	// guarda el hash; el token crudo viaja en el correo y no se persiste.
+	CreateVerificationToken(ctx context.Context, arg CreateVerificationTokenParams) error
 	// Devuelve filas afectadas: 0 -> ErrEventNotFound.
 	DeleteEvent(ctx context.Context, arg DeleteEventParams) (int64, error)
 	// Borra la cuenta. events y user_credentials referencian users con ON DELETE
@@ -38,10 +43,19 @@ type Querier interface {
 	// 0 filas -> ErrUserNotFound.
 	GetUserByGoogleSub(ctx context.Context, googleSub *string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
+	// Busca por el hash del token presentado. 0 filas -> ErrInvalidVerificationToken.
+	GetVerificationTokenByHash(ctx context.Context, tokenHash string) (EmailVerificationToken, error)
 	// Adjunta el sub de Google a la cuenta. Una violacion de unicidad (el sub ya
 	// esta en otra cuenta) la traduce el repo a ErrGoogleLinkConflict.
 	// 0 filas -> ErrUserNotFound.
 	LinkGoogleSub(ctx context.Context, arg LinkGoogleSubParams) (int64, error)
+	// Marca el token como usado de forma atomica y de UN SOLO USO: la condicion
+	// used_at IS NULL hace que dos confirmaciones concurrentes solo una afecte filas
+	// (la otra ve 0 filas -> token ya usado). 0 filas -> ya usado (o id inexistente).
+	MarkVerificationTokenUsed(ctx context.Context, arg MarkVerificationTokenUsedParams) (int64, error)
+	// Marca el correo del usuario como verificado (gate suave; idempotente). 0 filas
+	// -> ErrUserNotFound.
+	SetEmailVerified(ctx context.Context, id string) (int64, error)
 	// updated_at lo re-sella la aplicacion (05 seccion 4.1). Scoping por user_id.
 	UpdateEvent(ctx context.Context, arg UpdateEventParams) (Event, error)
 	// Actualiza el hash (cambio de contrasena). La aplicacion fija updated_at.

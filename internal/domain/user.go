@@ -18,7 +18,11 @@ type User struct {
 	// AuthProvider (el proveedor de ORIGEN), permite que una cuenta password
 	// entre tambien por Google una vez vinculada. Nunca se llavea por email.
 	GoogleSub *string
-	CreatedAt time.Time
+	// EmailVerified indica si el dueno comprobo el correo (gate SUAVE: nunca
+	// bloquea el login; la app lo usa solo para un aviso). Las cuentas de origen
+	// Google nacen verificadas (el idToken da fe del correo).
+	EmailVerified bool
+	CreatedAt     time.Time
 }
 
 // GoogleLinked indica si la cuenta tiene Google adjunto (entra tambien por

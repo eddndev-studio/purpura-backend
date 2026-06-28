@@ -90,6 +90,10 @@ type UserRepository interface {
 	// usuario no existe: domain.ErrUserNotFound.
 	ClearGoogleSub(ctx context.Context, userID string) error
 
+	// SetEmailVerified marca el correo del usuario como verificado (idempotente).
+	// Si el usuario no existe: domain.ErrUserNotFound.
+	SetEmailVerified(ctx context.Context, userID string) error
+
 	// GetPasswordHash devuelve el hash de credencial del usuario (cuenta
 	// password). Si el usuario no tiene credencial local:
 	// domain.ErrInvalidCredential (no distingue "no existe" de "sin password").

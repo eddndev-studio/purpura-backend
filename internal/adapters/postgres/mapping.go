@@ -1,8 +1,13 @@
 package postgres
 
 import (
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/eddndev-studio/purpura-backend/internal/db"
 	"github.com/eddndev-studio/purpura-backend/internal/domain"
+	"github.com/eddndev-studio/purpura-backend/internal/ports"
 )
 
 // Los enums se persisten como text (05 seccion 2), de modo que sqlc los emite
@@ -71,22 +76,54 @@ func updateEventParams(e *domain.Event) db.UpdateEventParams {
 
 func toDomainUser(u db.User) domain.User {
 	return domain.User{
-		ID:           u.ID,
-		Email:        u.Email,
-		Nombre:       u.Nombre,
-		AuthProvider: domain.AuthProvider(u.AuthProvider),
-		GoogleSub:    u.GoogleSub,
-		CreatedAt:    u.CreatedAt,
+		ID:            u.ID,
+		Email:         u.Email,
+		Nombre:        u.Nombre,
+		AuthProvider:  domain.AuthProvider(u.AuthProvider),
+		GoogleSub:     u.GoogleSub,
+		EmailVerified: u.EmailVerified,
+		CreatedAt:     u.CreatedAt,
 	}
 }
 
 func createUserParams(u *domain.User) db.CreateUserParams {
 	return db.CreateUserParams{
-		ID:           u.ID,
-		Email:        u.Email,
-		Nombre:       u.Nombre,
-		AuthProvider: string(u.AuthProvider),
-		GoogleSub:    u.GoogleSub,
-		CreatedAt:    u.CreatedAt,
+		ID:            u.ID,
+		Email:         u.Email,
+		Nombre:        u.Nombre,
+		AuthProvider:  string(u.AuthProvider),
+		GoogleSub:     u.GoogleSub,
+		EmailVerified: u.EmailVerified,
+		CreatedAt:     u.CreatedAt,
 	}
+}
+
+func toDomainVerificationToken(t db.EmailVerificationToken) ports.VerificationToken {
+	return ports.VerificationToken{
+		ID:        t.ID,
+		UserID:    t.UserID,
+		TokenHash: t.TokenHash,
+		ExpiresAt: t.ExpiresAt,
+		UsedAt:    pgTimePtr(t.UsedAt),
+		CreatedAt: t.CreatedAt,
+	}
+}
+
+func createVerificationTokenParams(t *ports.VerificationToken) db.CreateVerificationTokenParams {
+	return db.CreateVerificationTokenParams{
+		ID:        t.ID,
+		UserID:    t.UserID,
+		TokenHash: t.TokenHash,
+		ExpiresAt: t.ExpiresAt,
+		CreatedAt: t.CreatedAt,
+	}
+}
+
+// pgTimePtr convierte un timestamptz nullable de pgx a *time.Time (nil si NULL).
+func pgTimePtr(ts pgtype.Timestamptz) *time.Time {
+	if !ts.Valid {
+		return nil
+	}
+	t := ts.Time
+	return &t
 }

@@ -31,4 +31,11 @@ var (
 	// sesion (401) para que el cliente no confunda "sesion expirada" con "token
 	// de Google rechazado".
 	ErrInvalidGoogleToken = errors.New("idToken de Google invalido")
+	// ErrInvalidVerificationToken: el token de verificacion de correo no existe o
+	// ya fue usado. No se distingue "inexistente" de "usado" para no filtrar la
+	// existencia de tokens.
+	ErrInvalidVerificationToken = errors.New("token de verificacion invalido")
+	// ErrVerificationTokenExpired: el token existe pero ya expiro; el usuario debe
+	// solicitar uno nuevo.
+	ErrVerificationTokenExpired = errors.New("token de verificacion expirado")
 )

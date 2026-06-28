@@ -69,10 +69,10 @@ func mustE2EServer(t *testing.T) (*httptest.Server, *pgxpool.Pool) {
 func migrate(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS user_credentials, events, users CASCADE;"); err != nil {
+	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS email_verification_tokens, user_credentials, events, users CASCADE;"); err != nil {
 		t.Fatalf("drop: %v", err)
 	}
-	for _, f := range []string{"0001_init_schema.up.sql", "0002_user_credentials.up.sql", "0003_add_google_sub.up.sql"} {
+	for _, f := range []string{"0001_init_schema.up.sql", "0002_user_credentials.up.sql", "0003_add_google_sub.up.sql", "0004_email_verification.up.sql"} {
 		sql, err := os.ReadFile(filepath.Join("..", "..", "..", "db", "migrations", f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)

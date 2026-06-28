@@ -19,11 +19,13 @@ import (
 	_ "time/tzdata"
 
 	"github.com/eddndev-studio/purpura-backend/internal/adapters/auth"
+	"github.com/eddndev-studio/purpura-backend/internal/adapters/email"
 	httpadapter "github.com/eddndev-studio/purpura-backend/internal/adapters/http"
 	"github.com/eddndev-studio/purpura-backend/internal/adapters/postgres"
 	"github.com/eddndev-studio/purpura-backend/internal/adapters/sys"
 	"github.com/eddndev-studio/purpura-backend/internal/app"
 	"github.com/eddndev-studio/purpura-backend/internal/config"
+	"github.com/eddndev-studio/purpura-backend/internal/ports"
 )
 
 func main() {
@@ -66,8 +68,20 @@ func run() error {
 	hasher := auth.NewBcryptHasher(cfg.BcryptCost)
 	clock := sys.NewClock()
 	ids := sys.NewUUIDGenerator()
+	verifCodec := sys.NewVerificationTokenCodec()
 	eventsRepo := postgres.NewEventRepository(pool)
 	usersRepo := postgres.NewUserRepository(pool)
+	verifTokens := postgres.NewVerificationTokenRepository(pool)
+
+	// EmailSender: Resend si hay API key, si no un sender de log (no brickea el
+	// despliegue; el enlace de verificacion queda en el log para local/staging).
+	var emailSender ports.EmailSender
+	if cfg.ResendAPIKey != "" {
+		emailSender = email.NewResendSender(cfg.ResendAPIKey, cfg.EmailFrom)
+	} else {
+		logger.Warn("RESEND_API_KEY vacia: los correos de verificacion solo se registran en el log")
+		emailSender = email.NewLogSender(logger)
+	}
 
 	// Casos de uso (dependen solo de puertos).
 	eventSvc := &app.EventService{Events: eventsRepo, Clock: clock, IDs: ids}
@@ -79,11 +93,22 @@ func run() error {
 		Clock:  clock,
 		IDs:    ids,
 	}
+	verificationSvc := &app.VerificationService{
+		Users:     usersRepo,
+		Tokens:    verifTokens,
+		Codec:     verifCodec,
+		Email:     emailSender,
+		Clock:     clock,
+		IDs:       ids,
+		TTL:       cfg.EmailVerificationTTL,
+		VerifyURL: cfg.EmailVerifyURL,
+	}
 
 	// Adaptador driving (consume los casos de uso).
 	router := httpadapter.NewRouter(httpadapter.Deps{
 		Events:       eventSvc,
 		Auth:         authSvc,
+		Verification: verificationSvc,
 		Tokens:       tokens,
 		Pinger:       pool,
 		CORSOrigins:  cfg.CORSOrigins,

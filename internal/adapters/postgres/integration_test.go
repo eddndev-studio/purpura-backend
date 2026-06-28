@@ -44,13 +44,14 @@ func mustPool(t *testing.T) *pgxpool.Pool {
 func mustMigrate(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS user_credentials, events, users CASCADE;"); err != nil {
+	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS email_verification_tokens, user_credentials, events, users CASCADE;"); err != nil {
 		t.Fatalf("drop fallo: %v", err)
 	}
 	for _, f := range []string{
 		"0001_init_schema.up.sql",
 		"0002_user_credentials.up.sql",
 		"0003_add_google_sub.up.sql",
+		"0004_email_verification.up.sql",
 	} {
 		path := filepath.Join("..", "..", "..", "db", "migrations", f)
 		sql, err := os.ReadFile(path)
@@ -389,4 +390,93 @@ func days(es []domain.Event) []int {
 		out[i] = e.StartsAt.Day()
 	}
 	return out
+}
+
+func TestIntegration_SetEmailVerified(t *testing.T) {
+	pool := mustPool(t)
+	repo := NewUserRepository(pool)
+	ctx := context.Background()
+
+	u := seedUser(t, pool, "verify@example.com")
+	got, err := repo.FindByID(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if got.EmailVerified {
+		t.Fatalf("una cuenta de contrasena nace sin verificar")
+	}
+
+	if err := repo.SetEmailVerified(ctx, u.ID); err != nil {
+		t.Fatalf("SetEmailVerified: %v", err)
+	}
+	got, _ = repo.FindByID(ctx, u.ID)
+	if !got.EmailVerified {
+		t.Errorf("el correo debe quedar verificado")
+	}
+	// Idempotente.
+	if err := repo.SetEmailVerified(ctx, u.ID); err != nil {
+		t.Errorf("SetEmailVerified idempotente fallo: %v", err)
+	}
+	// Usuario inexistente -> ErrUserNotFound.
+	if err := repo.SetEmailVerified(ctx, uuid.NewString()); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Errorf("usuario inexistente -> ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestIntegration_VerificationTokenLifecycle(t *testing.T) {
+	pool := mustPool(t)
+	users := NewUserRepository(pool)
+	repo := NewVerificationTokenRepository(pool)
+	ctx := context.Background()
+
+	u := seedUser(t, pool, "vtoken@example.com")
+	now := time.Now().UTC().Truncate(time.Second)
+	tok := &ports.VerificationToken{
+		ID:        uuid.NewString(),
+		UserID:    u.ID,
+		TokenHash: "hash-deadbeef",
+		ExpiresAt: now.Add(time.Hour),
+		CreatedAt: now,
+	}
+	if err := repo.Create(ctx, tok); err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+
+	got, err := repo.FindByHash(ctx, "hash-deadbeef")
+	if err != nil {
+		t.Fatalf("find by hash: %v", err)
+	}
+	if got.UserID != u.ID || got.UsedAt != nil {
+		t.Errorf("token recien creado mal: userID=%q usedAt=%v", got.UserID, got.UsedAt)
+	}
+
+	// MarkUsed es de un solo uso: el segundo intento ve 0 filas (false).
+	ok, err := repo.MarkUsed(ctx, tok.ID, now)
+	if err != nil || !ok {
+		t.Fatalf("primer MarkUsed: ok=%v err=%v", ok, err)
+	}
+	ok2, err := repo.MarkUsed(ctx, tok.ID, now)
+	if err != nil {
+		t.Fatalf("segundo MarkUsed: %v", err)
+	}
+	if ok2 {
+		t.Errorf("el segundo MarkUsed debe ser false (un solo uso)")
+	}
+	got2, _ := repo.FindByHash(ctx, "hash-deadbeef")
+	if got2.UsedAt == nil {
+		t.Errorf("UsedAt debe estar seteado tras MarkUsed")
+	}
+
+	// Hash inexistente -> ErrInvalidVerificationToken.
+	if _, err := repo.FindByHash(ctx, "no-existe"); !errors.Is(err, domain.ErrInvalidVerificationToken) {
+		t.Errorf("hash inexistente -> ErrInvalidVerificationToken, got %v", err)
+	}
+
+	// Cascade: al borrar el usuario, sus tokens caen (FK ON DELETE CASCADE).
+	if err := users.DeleteAccount(ctx, u.ID); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+	if _, err := repo.FindByHash(ctx, "hash-deadbeef"); !errors.Is(err, domain.ErrInvalidVerificationToken) {
+		t.Errorf("tras borrar el usuario, el token debe desaparecer por cascade, got %v", err)
+	}
 }
