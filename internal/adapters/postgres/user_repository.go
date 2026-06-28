@@ -143,6 +143,19 @@ func (r *UserRepository) ClearGoogleSub(ctx context.Context, userID string) erro
 	return nil
 }
 
+// SetEmailVerified marca el correo del usuario como verificado (idempotente).
+// 0 filas -> ErrUserNotFound.
+func (r *UserRepository) SetEmailVerified(ctx context.Context, userID string) error {
+	n, err := r.q.SetEmailVerified(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("postgres: set email verified: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
 // GetPasswordHash lee el hash de credencial; ausencia -> ErrInvalidCredential
 // (no distingue "sin cuenta" de "sin password", para no filtrar existencia).
 func (r *UserRepository) GetPasswordHash(ctx context.Context, userID string) (string, error) {
