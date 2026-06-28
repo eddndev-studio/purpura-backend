@@ -97,13 +97,23 @@ func (s *AuthService) AuthenticateWithGoogle(ctx context.Context, idToken string
 	}
 
 	// 1) Llave estable: el sub. Si ya existe una cuenta con ese sub -> login.
+	// Este camino NO usa el email, asi que email_verified es irrelevante aqui.
 	if u, ferr := s.Users.FindByGoogleSub(ctx, identity.Sub); ferr == nil {
 		return s.issue(ctx, u)
 	} else if !errors.Is(ferr, domain.ErrUserNotFound) {
 		return AuthResult{}, ferr
 	}
 
-	// 2) Sin cuenta por sub: reconciliar por email.
+	// 2) Sin cuenta por sub: de aqui en adelante las decisiones se basan en el
+	// EMAIL (crear cuenta nueva o reconciliar una legacy), asi que exigimos que
+	// Google de fe de el. Un email_verified=false podria pertenecer a otra persona
+	// (p.ej. dominios Workspace): sin esta guarda, un atacante con un idToken de
+	// email no verificado podria CREAR una cuenta squatteando un correo ajeno o
+	// SECUESTRAR una cuenta Google legacy (google_sub NULL) con ese email.
+	if !identity.EmailVerified {
+		return AuthResult{}, domain.ErrEmailNotVerified
+	}
+
 	email := strings.ToLower(strings.TrimSpace(identity.Email))
 	u, err := s.Users.FindByEmail(ctx, email)
 	switch {
@@ -118,6 +128,13 @@ func (s *AuthService) AuthenticateWithGoogle(ctx context.Context, idToken string
 		sub := identity.Sub
 		nu.GoogleSub = &sub
 		if cerr := s.Users.Create(ctx, nu); cerr != nil {
+			// Carrera: otra peticion con el MISMO sub gano la creacion. En vez de
+			// devolver un error, entramos a la cuenta que ya quedo creada.
+			if errors.Is(cerr, domain.ErrGoogleLinkConflict) {
+				if existing, ferr := s.Users.FindByGoogleSub(ctx, identity.Sub); ferr == nil {
+					return s.issue(ctx, existing)
+				}
+			}
 			return AuthResult{}, cerr
 		}
 		return s.issue(ctx, nu)
@@ -125,8 +142,14 @@ func (s *AuthService) AuthenticateWithGoogle(ctx context.Context, idToken string
 		return AuthResult{}, err
 	case u.GoogleSub == nil && u.AuthProvider == domain.AuthGoogle:
 		// Cuenta Google legacy (creada por email antes del llaveo por sub):
-		// retro-rellenar el sub (misma identidad) y entrar.
+		// retro-rellenar el sub (misma identidad, email ya verificado arriba) y
+		// entrar. Si el retro-fill choca por carrera, NO filtramos que el email
+		// era de una cuenta google: lo colapsamos al mismo ErrEmailTaken que
+		// cualquier otro conflicto por email.
 		if lerr := s.Users.LinkGoogleSub(ctx, u.ID, identity.Sub); lerr != nil {
+			if errors.Is(lerr, domain.ErrGoogleLinkConflict) {
+				return AuthResult{}, domain.ErrEmailTaken
+			}
 			return AuthResult{}, lerr
 		}
 		return s.issue(ctx, u)
@@ -143,9 +166,12 @@ func (s *AuthService) AuthenticateWithGoogle(ctx context.Context, idToken string
 // ya tiene otro Google, o el sub pertenece a otra cuenta -> ErrGoogleLinkConflict.
 // Devuelve el usuario actualizado (sin emitir token: el usuario ya esta logueado).
 func (s *AuthService) LinkGoogle(ctx context.Context, userID, idToken string) (*domain.User, error) {
+	// idToken invalido aqui es un PARAMETRO malo de una peticion ya autenticada:
+	// ErrInvalidGoogleToken (400), no ErrUnauthorized (401) -> el cliente no lo
+	// confunde con "sesion expirada" y no cierra la sesion del usuario.
 	identity, err := s.Google.Verify(ctx, idToken)
 	if err != nil {
-		return nil, fmt.Errorf("%w: idToken de Google no verificable", ErrUnauthorized)
+		return nil, fmt.Errorf("%w: idToken de Google no verificable", domain.ErrInvalidGoogleToken)
 	}
 	u, err := s.Users.FindByID(ctx, userID)
 	if err != nil {

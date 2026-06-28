@@ -52,6 +52,10 @@ func ErrorCode(err error) string {
 		return "google_link_conflict"
 	case errors.Is(err, domain.ErrCannotUnlinkGoogle):
 		return "cannot_unlink_google"
+	case errors.Is(err, domain.ErrEmailNotVerified):
+		return "email_not_verified"
+	case errors.Is(err, domain.ErrInvalidGoogleToken):
+		return "invalid_google_token"
 	case errors.Is(err, domain.ErrInvalidCredential):
 		return "invalid_credential"
 	// Las validaciones de NewUser (formato de email, nombre vacio, proveedor)

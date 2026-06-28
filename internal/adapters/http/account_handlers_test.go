@@ -56,6 +56,20 @@ func TestLinkGoogle_Conflict_409(t *testing.T) {
 	}
 }
 
+func TestLinkGoogle_InvalidToken_400(t *testing.T) {
+	auth := &fakeAuth{linkErr: domain.ErrInvalidGoogleToken}
+	h := newServer(Deps{Events: &fakeEvents{}, Auth: auth})
+	rec := do(h, http.MethodPost, "/api/v1/account/link-google", `{"idToken":"bad"}`, true)
+	// idToken invalido en una peticion autenticada -> 400 (no 401): el cliente no
+	// debe confundirlo con sesion expirada.
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, quiero 400 (%s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"invalid_google_token"`) {
+		t.Errorf("quiero code invalid_google_token: %s", rec.Body.String())
+	}
+}
+
 func TestUnlinkGoogle_200ReturnsUnlinked(t *testing.T) {
 	auth := &fakeAuth{unlinkUser: &domain.User{ID: "user-1", Email: "ana@example.com", Nombre: "Ana", AuthProvider: domain.AuthPassword}}
 	h := newServer(Deps{Events: &fakeEvents{}, Auth: auth})

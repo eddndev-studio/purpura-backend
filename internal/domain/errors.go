@@ -22,4 +22,13 @@ var (
 	// ErrCannotUnlinkGoogle: desvincular dejaria la cuenta sin ningun metodo de
 	// inicio de sesion (no tiene credencial de contrasena).
 	ErrCannotUnlinkGoogle = errors.New("no se puede desvincular Google: la cuenta quedaria sin acceso")
+	// ErrEmailNotVerified: el idToken trae email_verified=false. No se puede
+	// confiar en ese correo para crear ni reconciliar una cuenta por email (el
+	// correo podria pertenecer a otra persona), asi que se rechaza el login.
+	ErrEmailNotVerified = errors.New("el correo de Google no esta verificado")
+	// ErrInvalidGoogleToken: el idToken de Google es invalido como PARAMETRO de
+	// una operacion ya autenticada (p.ej. vincular). Se distingue de la falta de
+	// sesion (401) para que el cliente no confunda "sesion expirada" con "token
+	// de Google rechazado".
+	ErrInvalidGoogleToken = errors.New("idToken de Google invalido")
 )

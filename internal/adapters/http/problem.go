@@ -45,6 +45,8 @@ var problemTitles = map[string]string{
 	"email_taken":          "Correo ya registrado",
 	"google_link_conflict": "Conflicto al vincular Google",
 	"cannot_unlink_google": "No se puede desvincular Google",
+	"email_not_verified":   "Correo de Google no verificado",
+	"invalid_google_token": "Token de Google invalido",
 	"invalid_credential":   "Credenciales invalidas",
 	"validation_failed":    "Validacion fallida",
 	"unauthorized":         "No autorizado",
@@ -66,7 +68,9 @@ func statusForCode(code string) int {
 		return http.StatusConflict
 	case "invalid_credential", "unauthorized":
 		return http.StatusUnauthorized
-	case "bad_request":
+	case "email_not_verified":
+		return http.StatusForbidden
+	case "bad_request", "invalid_google_token":
 		return http.StatusBadRequest
 	case "method_not_allowed":
 		return http.StatusMethodNotAllowed
