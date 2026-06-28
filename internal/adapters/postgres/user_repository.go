@@ -41,6 +41,11 @@ func (r *UserRepository) Create(ctx context.Context, u *domain.User) error {
 		if isUniqueViolation(err, emailUniqueConstraint) {
 			return domain.ErrEmailTaken
 		}
+		// Cuenta google sellada con un sub que otra peticion concurrente ya creo:
+		// se traduce a ErrGoogleLinkConflict (no a un 500), igual que LinkGoogleSub.
+		if isUniqueViolation(err, googleSubUniqueConstraint) {
+			return domain.ErrGoogleLinkConflict
+		}
 		return fmt.Errorf("postgres: create user: %w", err)
 	}
 	return nil
