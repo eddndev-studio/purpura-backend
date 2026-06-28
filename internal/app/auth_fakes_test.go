@@ -13,6 +13,7 @@ import (
 type fakeUserRepo struct {
 	byID    map[string]*domain.User
 	byEmail map[string]string // lower(email) -> userID
+	bySub   map[string]string // google_sub -> userID
 	creds   map[string]string // userID -> passwordHash
 }
 
@@ -22,6 +23,7 @@ func newFakeUserRepo() *fakeUserRepo {
 	return &fakeUserRepo{
 		byID:    map[string]*domain.User{},
 		byEmail: map[string]string{},
+		bySub:   map[string]string{},
 		creds:   map[string]string{},
 	}
 }
@@ -30,6 +32,9 @@ func (r *fakeUserRepo) put(u *domain.User) {
 	cp := *u
 	r.byID[u.ID] = &cp
 	r.byEmail[strings.ToLower(u.Email)] = u.ID
+	if u.GoogleSub != nil {
+		r.bySub[*u.GoogleSub] = u.ID
+	}
 }
 
 func (r *fakeUserRepo) Create(_ context.Context, u *domain.User) error {
@@ -67,6 +72,44 @@ func (r *fakeUserRepo) FindByID(_ context.Context, id string) (*domain.User, err
 	return &cp, nil
 }
 
+func (r *fakeUserRepo) FindByGoogleSub(_ context.Context, sub string) (*domain.User, error) {
+	id, ok := r.bySub[sub]
+	if !ok {
+		return nil, domain.ErrUserNotFound
+	}
+	cp := *r.byID[id]
+	return &cp, nil
+}
+
+func (r *fakeUserRepo) LinkGoogleSub(_ context.Context, userID, sub string) error {
+	if owner, ok := r.bySub[sub]; ok && owner != userID {
+		return domain.ErrGoogleLinkConflict
+	}
+	u, ok := r.byID[userID]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	if u.GoogleSub != nil {
+		delete(r.bySub, *u.GoogleSub)
+	}
+	s := sub
+	u.GoogleSub = &s
+	r.bySub[sub] = userID
+	return nil
+}
+
+func (r *fakeUserRepo) ClearGoogleSub(_ context.Context, userID string) error {
+	u, ok := r.byID[userID]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	if u.GoogleSub != nil {
+		delete(r.bySub, *u.GoogleSub)
+		u.GoogleSub = nil
+	}
+	return nil
+}
+
 func (r *fakeUserRepo) GetPasswordHash(_ context.Context, userID string) (string, error) {
 	h, ok := r.creds[userID]
 	if !ok {
@@ -80,9 +123,12 @@ func (r *fakeUserRepo) DeleteAccount(_ context.Context, id string) error {
 	if !ok {
 		return domain.ErrUserNotFound
 	}
-	// Espeja el ON DELETE CASCADE: al borrar el usuario caen su credencial y el
-	// indice por email.
+	// Espeja el ON DELETE CASCADE: al borrar el usuario caen su credencial y los
+	// indices por email y por google_sub.
 	delete(r.byEmail, strings.ToLower(u.Email))
+	if u.GoogleSub != nil {
+		delete(r.bySub, *u.GoogleSub)
+	}
 	delete(r.creds, id)
 	delete(r.byID, id)
 	return nil

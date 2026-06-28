@@ -121,7 +121,7 @@ func TestLogin_UnknownUserDoesNotLeakExistence(t *testing.T) {
 
 func TestLogin_GoogleAccountHasNoLocalCredential(t *testing.T) {
 	svc, _ := newAuthSvc()
-	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Email: "g@gmail.com", Nombre: "G"}}
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-g", Email: "g@gmail.com", Nombre: "G"}}
 	if _, err := svc.AuthenticateWithGoogle(context.Background(), "idtok"); err != nil {
 		t.Fatalf("alta google fallo: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestLogin_GoogleAccountHasNoLocalCredential(t *testing.T) {
 
 func TestGoogle_NewUserCreated(t *testing.T) {
 	svc, _ := newAuthSvc()
-	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Email: "Carlos@Gmail.com", Nombre: "Carlos"}}
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-carlos", Email: "Carlos@Gmail.com", Nombre: "Carlos"}}
 	res, err := svc.AuthenticateWithGoogle(context.Background(), "idtok")
 	if err != nil {
 		t.Fatalf("error inesperado: %v", err)
@@ -141,11 +141,15 @@ func TestGoogle_NewUserCreated(t *testing.T) {
 	if res.User.ID != "id-1" || res.User.Email != "carlos@gmail.com" || res.User.AuthProvider != domain.AuthGoogle {
 		t.Errorf("usuario google mal: %+v", res.User)
 	}
+	// La cuenta google nace sellada con su sub (llave de vinculacion).
+	if res.User.GoogleSub == nil || *res.User.GoogleSub != "sub-carlos" {
+		t.Errorf("la cuenta google debe nacer con google_sub=sub-carlos: %+v", res.User.GoogleSub)
+	}
 }
 
-func TestGoogle_ExistingGoogleReused(t *testing.T) {
+func TestGoogle_ExistingGoogleReusedBySub(t *testing.T) {
 	svc, _ := newAuthSvc()
-	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Email: "carlos@gmail.com", Nombre: "Carlos"}}
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-carlos", Email: "carlos@gmail.com", Nombre: "Carlos"}}
 	first, _ := svc.AuthenticateWithGoogle(context.Background(), "idtok")
 	second, err := svc.AuthenticateWithGoogle(context.Background(), "idtok")
 	if err != nil {
@@ -156,13 +160,152 @@ func TestGoogle_ExistingGoogleReused(t *testing.T) {
 	}
 }
 
+// Aunque el email de Google cambie, el login sigue resolviendo a la misma cuenta
+// por el sub inmutable (no se crea una cuenta nueva ni se rechaza).
+func TestGoogle_ReusedBySubEvenIfEmailChanged(t *testing.T) {
+	svc, _ := newAuthSvc()
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-x", Email: "viejo@gmail.com", Nombre: "X"}}
+	first, _ := svc.AuthenticateWithGoogle(context.Background(), "idtok")
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-x", Email: "nuevo@gmail.com", Nombre: "X"}}
+	second, err := svc.AuthenticateWithGoogle(context.Background(), "idtok")
+	if err != nil {
+		t.Fatalf("login por sub con email nuevo fallo: %v", err)
+	}
+	if second.User.ID != first.User.ID {
+		t.Errorf("mismo sub debe ser la misma cuenta pese al email distinto: %q / %q", first.User.ID, second.User.ID)
+	}
+}
+
 func TestGoogle_EmailBelongsToPasswordAccount(t *testing.T) {
 	svc, _ := newAuthSvc()
 	_, _ = svc.Register(context.Background(), RegisterInput{Email: "ana@example.com", Nombre: "Ana", Password: "S3guroPurpura!"})
-	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Email: "ana@example.com", Nombre: "Ana"}}
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-ana", Email: "ana@example.com", Nombre: "Ana"}}
 	_, err := svc.AuthenticateWithGoogle(context.Background(), "idtok")
 	if !errors.Is(err, domain.ErrEmailTaken) {
-		t.Fatalf("email de cuenta password via google -> ErrEmailTaken, obtuve %v", err)
+		t.Fatalf("email de cuenta password via google (sin vinculo) -> ErrEmailTaken, obtuve %v", err)
+	}
+}
+
+// Cuenta Google legacy (creada por email antes del llaveo por sub, google_sub
+// nil): el primer login con sub la retro-rellena y entra a la MISMA cuenta.
+func TestGoogle_LegacyAccountRetrofillsSub(t *testing.T) {
+	svc, repo := newAuthSvc()
+	legacy := &domain.User{ID: "legacy-1", Email: "legacy@gmail.com", Nombre: "Legacy", AuthProvider: domain.AuthGoogle}
+	repo.put(legacy)
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-legacy", Email: "legacy@gmail.com", Nombre: "Legacy"}}
+	res, err := svc.AuthenticateWithGoogle(context.Background(), "idtok")
+	if err != nil {
+		t.Fatalf("retro-fill fallo: %v", err)
+	}
+	if res.User.ID != "legacy-1" {
+		t.Errorf("debe entrar a la cuenta legacy, no crear otra: %q", res.User.ID)
+	}
+	stored, _ := repo.FindByGoogleSub(context.Background(), "sub-legacy")
+	if stored == nil || stored.ID != "legacy-1" {
+		t.Errorf("el sub debe quedar retro-rellenado en la cuenta legacy")
+	}
+}
+
+func TestLinkGoogle_AttachesToPasswordAccount(t *testing.T) {
+	svc, _ := newAuthSvc()
+	reg, _ := svc.Register(context.Background(), RegisterInput{Email: "ana@example.com", Nombre: "Ana", Password: "S3guroPurpura!"})
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-ana", Email: "ana@example.com", Nombre: "Ana"}}
+	u, err := svc.LinkGoogle(context.Background(), reg.User.ID, "idtok")
+	if err != nil {
+		t.Fatalf("LinkGoogle fallo: %v", err)
+	}
+	if !u.GoogleLinked() || *u.GoogleSub != "sub-ana" {
+		t.Errorf("la cuenta debe quedar vinculada a sub-ana: %+v", u.GoogleSub)
+	}
+	// Ahora puede entrar por Google (resuelve por sub a la MISMA cuenta password).
+	login, err := svc.AuthenticateWithGoogle(context.Background(), "idtok")
+	if err != nil || login.User.ID != reg.User.ID {
+		t.Errorf("tras vincular, el login Google debe entrar a la cuenta password: id=%q err=%v", login.User.ID, err)
+	}
+}
+
+func TestLinkGoogle_IdempotentSameSub(t *testing.T) {
+	svc, _ := newAuthSvc()
+	reg, _ := svc.Register(context.Background(), RegisterInput{Email: "ana@example.com", Nombre: "Ana", Password: "S3guroPurpura!"})
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-ana", Email: "ana@example.com", Nombre: "Ana"}}
+	if _, err := svc.LinkGoogle(context.Background(), reg.User.ID, "idtok"); err != nil {
+		t.Fatalf("primer link fallo: %v", err)
+	}
+	if _, err := svc.LinkGoogle(context.Background(), reg.User.ID, "idtok"); err != nil {
+		t.Errorf("re-vincular el MISMO sub debe ser idempotente, obtuve %v", err)
+	}
+}
+
+func TestLinkGoogle_AccountAlreadyHasDifferentGoogle(t *testing.T) {
+	svc, _ := newAuthSvc()
+	reg, _ := svc.Register(context.Background(), RegisterInput{Email: "ana@example.com", Nombre: "Ana", Password: "S3guroPurpura!"})
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-1", Email: "ana@example.com", Nombre: "Ana"}}
+	_, _ = svc.LinkGoogle(context.Background(), reg.User.ID, "idtok")
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-2", Email: "ana@example.com", Nombre: "Ana"}}
+	_, err := svc.LinkGoogle(context.Background(), reg.User.ID, "idtok")
+	if !errors.Is(err, domain.ErrGoogleLinkConflict) {
+		t.Fatalf("vincular un segundo Google distinto -> ErrGoogleLinkConflict, obtuve %v", err)
+	}
+}
+
+func TestLinkGoogle_SubTakenByAnotherAccount(t *testing.T) {
+	svc, _ := newAuthSvc()
+	// Cuenta A nace de Google con sub-shared.
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-shared", Email: "a@gmail.com", Nombre: "A"}}
+	_, _ = svc.AuthenticateWithGoogle(context.Background(), "idtok")
+	// Cuenta B (password) intenta vincular el MISMO sub.
+	regB, _ := svc.Register(context.Background(), RegisterInput{Email: "b@example.com", Nombre: "B", Password: "S3guroPurpura!"})
+	_, err := svc.LinkGoogle(context.Background(), regB.User.ID, "idtok")
+	if !errors.Is(err, domain.ErrGoogleLinkConflict) {
+		t.Fatalf("vincular un sub ya usado por otra cuenta -> ErrGoogleLinkConflict, obtuve %v", err)
+	}
+}
+
+func TestLinkGoogle_InvalidIdTokenIsUnauthorized(t *testing.T) {
+	svc, _ := newAuthSvc()
+	reg, _ := svc.Register(context.Background(), RegisterInput{Email: "ana@example.com", Nombre: "Ana", Password: "S3guroPurpura!"})
+	svc.Google = fakeGoogleVerifier{err: errors.New("firma invalida")}
+	_, err := svc.LinkGoogle(context.Background(), reg.User.ID, "idtok")
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("idToken invalido al vincular -> ErrUnauthorized, obtuve %v", err)
+	}
+}
+
+func TestUnlinkGoogle_WithPasswordSucceeds(t *testing.T) {
+	svc, _ := newAuthSvc()
+	reg, _ := svc.Register(context.Background(), RegisterInput{Email: "ana@example.com", Nombre: "Ana", Password: "S3guroPurpura!"})
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-ana", Email: "ana@example.com", Nombre: "Ana"}}
+	_, _ = svc.LinkGoogle(context.Background(), reg.User.ID, "idtok")
+	u, err := svc.UnlinkGoogle(context.Background(), reg.User.ID)
+	if err != nil {
+		t.Fatalf("UnlinkGoogle fallo: %v", err)
+	}
+	if u.GoogleLinked() {
+		t.Errorf("la cuenta debe quedar desvinculada: %+v", u.GoogleSub)
+	}
+}
+
+// Una cuenta de ORIGEN Google no tiene contrasena: desvincular la dejaria sin
+// acceso -> se rechaza.
+func TestUnlinkGoogle_NoPasswordRejected(t *testing.T) {
+	svc, _ := newAuthSvc()
+	svc.Google = fakeGoogleVerifier{identity: ports.GoogleIdentity{Sub: "sub-g", Email: "g@gmail.com", Nombre: "G"}}
+	res, _ := svc.AuthenticateWithGoogle(context.Background(), "idtok")
+	_, err := svc.UnlinkGoogle(context.Background(), res.User.ID)
+	if !errors.Is(err, domain.ErrCannotUnlinkGoogle) {
+		t.Fatalf("desvincular sin contrasena -> ErrCannotUnlinkGoogle, obtuve %v", err)
+	}
+}
+
+func TestUnlinkGoogle_IdempotentWhenNotLinked(t *testing.T) {
+	svc, _ := newAuthSvc()
+	reg, _ := svc.Register(context.Background(), RegisterInput{Email: "ana@example.com", Nombre: "Ana", Password: "S3guroPurpura!"})
+	u, err := svc.UnlinkGoogle(context.Background(), reg.User.ID)
+	if err != nil {
+		t.Errorf("desvincular una cuenta sin Google debe ser no-op, obtuve %v", err)
+	}
+	if u.GoogleLinked() {
+		t.Errorf("no deberia estar vinculada")
 	}
 }
 
