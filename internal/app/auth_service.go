@@ -127,6 +127,9 @@ func (s *AuthService) AuthenticateWithGoogle(ctx context.Context, idToken string
 		nu.CreatedAt = s.Clock.Now()
 		sub := identity.Sub
 		nu.GoogleSub = &sub
+		// Cuenta de origen Google: el correo ya quedo probado (exigimos
+		// identity.EmailVerified arriba), asi nace verificada.
+		nu.EmailVerified = true
 		if cerr := s.Users.Create(ctx, nu); cerr != nil {
 			// Carrera: otra peticion con el MISMO sub gano la creacion. En vez de
 			// devolver un error, entramos a la cuenta que ya quedo creada.
@@ -227,6 +230,12 @@ func (s *AuthService) UnlinkGoogle(ctx context.Context, userID string) (*domain.
 // operacion de datos posterior fallara porque el usuario dejo de existir.
 func (s *AuthService) DeleteAccount(ctx context.Context, userID string) error {
 	return s.Users.DeleteAccount(ctx, userID)
+}
+
+// Me devuelve el usuario autenticado (para GET /auth/me: refrescar nombre/correo
+// y el flag email_verified sin re-loguear). userID viene del sub del JWT.
+func (s *AuthService) Me(ctx context.Context, userID string) (*domain.User, error) {
+	return s.Users.FindByID(ctx, userID)
 }
 
 // issue emite el access token para el usuario y arma el AuthResult.

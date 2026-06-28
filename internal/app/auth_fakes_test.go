@@ -110,6 +110,15 @@ func (r *fakeUserRepo) ClearGoogleSub(_ context.Context, userID string) error {
 	return nil
 }
 
+func (r *fakeUserRepo) SetEmailVerified(_ context.Context, userID string) error {
+	u, ok := r.byID[userID]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	u.EmailVerified = true
+	return nil
+}
+
 func (r *fakeUserRepo) GetPasswordHash(_ context.Context, userID string) (string, error) {
 	h, ok := r.creds[userID]
 	if !ok {

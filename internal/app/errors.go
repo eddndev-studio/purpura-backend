@@ -56,6 +56,10 @@ func ErrorCode(err error) string {
 		return "email_not_verified"
 	case errors.Is(err, domain.ErrInvalidGoogleToken):
 		return "invalid_google_token"
+	case errors.Is(err, domain.ErrInvalidVerificationToken):
+		return "invalid_verification_token"
+	case errors.Is(err, domain.ErrVerificationTokenExpired):
+		return "verification_token_expired"
 	case errors.Is(err, domain.ErrInvalidCredential):
 		return "invalid_credential"
 	// Las validaciones de NewUser (formato de email, nombre vacio, proveedor)
