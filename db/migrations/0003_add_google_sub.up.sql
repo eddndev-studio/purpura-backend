@@ -4,4 +4,8 @@
 -- UNIQUE, por eso no hace falta un indice parcial), y un mismo sub no puede estar
 -- en dos cuentas. Es ortogonal a auth_provider (el proveedor de ORIGEN, que no
 -- cambia al vincular): si google_sub != NULL, la cuenta entra tambien por Google.
-ALTER TABLE users ADD COLUMN google_sub text UNIQUE;
+-- El constraint UNIQUE se nombra EXPLICITAMENTE (users_google_sub_key) en vez de
+-- depender del auto-naming de Postgres: el adaptador mapea ese nombre exacto al
+-- traducir 23505 -> ErrGoogleLinkConflict (user_repository.go). Coincide con el
+-- nombre que Postgres habria generado, asi que no cambia nada salvo blindarlo.
+ALTER TABLE users ADD COLUMN google_sub text CONSTRAINT users_google_sub_key UNIQUE;
